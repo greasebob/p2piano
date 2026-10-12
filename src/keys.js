@@ -1,6 +1,8 @@
-// The computer keyboard follows the Roblox piano's key protocol, the same keys QuartzMIDI sends:
-// 61 keys from C2 on the white-key row with Shift for sharps, Ctrl for the rest of the 88 keys,
-// Alt plus a key for one of 32 velocity levels, Space for sustain and ] for sostenuto.
+// Computer keyboard mapping, matching the Roblox piano layout QuartzMIDI uses:
+// - 61 keys from C2, Shift for sharps
+// - Ctrl for the remaining notes of the 88 keys
+// - Alt + key for one of 32 velocity levels
+// - Space for sustain, ] for sostenuto
 
 const WHITE_CHARS = '1234567890qwertyuiopasdfghjklzxcvbnm';
 const LOW_CHARS = '1234567890qwert'; // Ctrl: A0 to B1
@@ -19,11 +21,11 @@ const VELOCITY = indexBy(VELOCITY_CHARS);
 export const SUSTAIN_CODE = 'Space';
 export const SOSTENUTO_CODE = 'BracketRight';
 
-/** Level 0-31 to the velocity the game plays it at. */
+/** Converts a velocity level (0-31) to a MIDI velocity. */
 export const levelVelocity = level => Math.min(127, (level + 1) * 4);
 
 /**
- * What a keydown means: {note}, {level} or null.
+ * Maps a keydown to {note}, {level} or null.
  * @param {KeyboardEvent} e
  */
 export function keyAction(e) {
@@ -45,7 +47,7 @@ export function keyAction(e) {
 
 const SHIFTED_DIGITS = { 1: '!', 2: '@', 4: '$', 5: '%', 6: '^', 8: '*', 9: '(' };
 
-/** Each note's key as the game's sheets write it. */
+/** Returns the key label for each note, as written in sheets. */
 export function keyLabels() {
     const labels = {};
     [...WHITE_CHARS].forEach((c, i) => {

@@ -5,12 +5,15 @@ const isBlack = n => [1, 3, 6, 8, 10].includes(n % 12);
 const WHITES = Array.from({ length: HIGH - LOW + 1 }, (_, i) => LOW + i).filter(n => !isBlack(n)).length;
 const RISE_PX_PER_S = 140;
 
-/** Left edge and width of a key as fractions of the keyboard's width. */
-function keyBox(n) {
-    let whites = 0;
-    for (let m = LOW; m < n; m++) if (!isBlack(m)) whites++;
-    const w = 1 / WHITES;
-    return isBlack(n) ? { x: whites * w - w * 0.3, w: w * 0.6 } : { x: whites * w, w };
+/** Left edge and width of each key as fractions of the keyboard's width. */
+const BOXES = new Map();
+for (let n = LOW, whites = 0, w = 1 / WHITES; n <= HIGH; n++) {
+    if (isBlack(n)) {
+        BOXES.set(n, { x: whites * w - w * 0.3, w: w * 0.6 });
+    } else {
+        BOXES.set(n, { x: whites * w, w });
+        whites++;
+    }
 }
 
 export class PianoView {
@@ -27,7 +30,7 @@ export class PianoView {
         this.trails = [];
         for (let n = LOW; n <= HIGH; n++) {
             const el = document.createElement('div');
-            const box = keyBox(n);
+            const box = BOXES.get(n);
             el.className = isBlack(n) ? 'key black' : 'key white';
             el.style.left = `${box.x * 100}%`;
             el.style.width = `${box.w * 100}%`;
@@ -41,7 +44,7 @@ export class PianoView {
             this.keys.set(n, el);
         }
         this.bindPointer(keysEl, onPress);
-        requestAnimationFrame(t => this.draw(t));
+        requestAnimationFrame(() => this.draw());
     }
 
     bindPointer(keysEl, onPress) {
@@ -118,7 +121,7 @@ export class PianoView {
         const now = performance.now();
         this.trails = this.trails.filter(t => t.end === null || (now - t.end) / 1000 * RISE_PX_PER_S < h);
         for (const t of this.trails) {
-            const box = keyBox(t.note);
+            const box = BOXES.get(t.note);
             const bottom = h - (t.end === null ? 0 : (now - t.end) / 1000 * RISE_PX_PER_S);
             const top = h - (now - t.start) / 1000 * RISE_PX_PER_S;
             g.globalAlpha = t.alpha;
@@ -129,6 +132,6 @@ export class PianoView {
             g.fill();
         }
         g.globalAlpha = 1;
-        requestAnimationFrame(t => this.draw(t));
+        requestAnimationFrame(() => this.draw());
     }
 }

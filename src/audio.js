@@ -1,7 +1,7 @@
 import { WorkletSynthesizer } from 'spessasynth_lib';
 import processorUrl from 'spessasynth_lib/dist/spessasynth_processor.min.js?url';
 
-/** The pianos by velocity layer count, each with one velocity inside every layer to preload. */
+// Pianos by velocity layer count. `strikes` has one velocity per layer, used to preload samples.
 export const BANKS = {
     8: { url: `${import.meta.env.BASE_URL}soundfonts/salamander-grand-v1.sf3`, strikes: [20, 40, 50, 64, 80, 96, 112, 125] },
     16: { url: `${import.meta.env.BASE_URL}soundfonts/salamander-grand-16-v1.sf3`, strikes: [13, 30, 35, 40, 45, 48, 53, 60, 68, 76, 84, 92, 100, 108, 116, 124] },
@@ -10,7 +10,7 @@ const CACHE = 'piano-room-banks-v1';
 const PRELOAD_CHANNEL = 15;
 const SOFT_PEDAL_SCALE = 0.6;
 
-/** Downloads the sound bank once and keeps it in Cache Storage. */
+/** Downloads a bank, or reads it from Cache Storage if it was downloaded before. */
 export async function loadBank(url, onProgress) {
     let cache = null;
     try {
@@ -20,7 +20,7 @@ export async function loadBank(url, onProgress) {
             onProgress(1);
             return await hit.arrayBuffer();
         }
-    } catch { /* no Cache Storage here: plain download */ }
+    } catch { /* Cache Storage unavailable */ }
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Sound bank: HTTP ${res.status}`);
     const total = Number(res.headers.get('content-length')) || 0;
@@ -41,15 +41,15 @@ export async function loadBank(url, onProgress) {
             const keys = await cache.keys();
             const known = Object.values(BANKS).map(b => new URL(b.url, location.href).href);
             await Promise.all(keys.filter(k => !known.includes(k.url)).map(k => cache.delete(k)));
-        } catch { /* quota: it downloads again next time */ }
+        } catch { /* over quota; not cached */ }
     }
     onProgress(1);
     return await blob.arrayBuffer();
 }
 
 /**
- * The synth and the output chain: synth -> volume -> limiter -> speakers.
- * Every sample is decoded before play, so no first strike waits on a Vorbis decode.
+ * Creates the synth and its output chain: synth -> volume -> limiter -> speakers.
+ * All samples are decoded up front so the first note of each does not stall.
  */
 export async function createPiano(ctx, bank, strikes, onPreload) {
     await ctx.audioWorklet.addModule(processorUrl);
@@ -68,50 +68,47 @@ export async function createPiano(ctx, bank, strikes, onPreload) {
     synth.setSystemParameter('interpolationType', 2); // hermite
     await preload(synth, strikes, onPreload);
 
-    const piano = {
+    return {
         synth,
         setVolume(v) { volume.gain.value = 3 * v * v; },
         setReverb(v) { for (let ch = 0; ch < 16; ch++) synth.controllerChange(ch, 91, v); },
-        /** Swaps in another bank; the one playing keeps sounding until the new one is decoded. */
         async setBank(buffer, strikes, onPreload) {
-            await synth.soundBankManager.addSoundBank(buffer, 'main');
+            await synth.soundBankManager.addSoundBank(buffer, 'main'); // replaces the current bank
             await preload(synth, strikes, onPreload);
         },
     };
-    return piano;
 }
 
-/** Strikes every sample once, silently, on a channel nobody plays. */
+/** Plays every sample once at zero volume on an unused channel, which decodes it. */
 async function preload(synth, strikes, onProgress) {
     synth.controllerChange(PRELOAD_CHANNEL, 7, 0);
     synth.controllerChange(PRELOAD_CHANNEL, 11, 0);
     for (let i = 0; i < strikes.length; i++) {
         for (let note = 21; note <= 108; note += 3) synth.noteOn(PRELOAD_CHANNEL, note, strikes[i]);
         for (let note = 21; note <= 108; note += 3) synth.noteOff(PRELOAD_CHANNEL, note);
-        await synth.getSnapshot(); // returns once the worklet has handled the strikes above
+        await synth.getSnapshot(); // resolves after the worklet has processed the notes above
         onProgress((i + 1) / strikes.length);
     }
-    synth.controllerChange(PRELOAD_CHANNEL, 120, 0); // all sound off, on this channel alone
+    synth.controllerChange(PRELOAD_CHANNEL, 120, 0); // all sound off
 }
 
 /**
- * One player's notes on one MIDI channel. Sostenuto and the soft pedal are handled here:
- * the synth knows only sustain.
+ * One player's notes on one MIDI channel. The synth only handles sustain, so sostenuto and
+ * the soft pedal are implemented here.
  */
 export class Hand {
     constructor(synth, channel, onKey) {
         this.synth = synth;
         this.ch = channel;
-        this.onKey = onKey; // (note, velocity or 0, delayMs)
-        this.down = new Set();
-        this.caught = new Set();
-        this.waiting = new Set();
+        this.onKey = onKey; // (note, velocity, delayMs); velocity 0 is a release
+        this.down = new Set(); // keys held
+        this.caught = new Set(); // keys held when sostenuto went down
+        this.waiting = new Set(); // caught keys released, sounding until sostenuto lifts
         this.sostenuto = false;
         this.soft = false;
-        this.sustain = 0;
     }
 
-    /** One MIDI message; `at` is an AudioContext time, `delay` the same in ms from now. */
+    /** Handles one MIDI message. `at` is an AudioContext time; `delay` is the same in ms from now. */
     midi(status, a, b, at, delay = 0) {
         const opts = at ? { time: at } : undefined;
         const type = status & 0xf0;
@@ -128,7 +125,6 @@ export class Hand {
             else this.synth.noteOff(this.ch, a, opts);
         } else if (type === 0xb0) {
             if (a === 64) {
-                this.sustain = b;
                 this.synth.controllerChange(this.ch, 64, b, opts);
             } else if (a === 66) {
                 const on = b >= 64;
@@ -145,14 +141,17 @@ export class Hand {
         }
     }
 
+    /** Releases all keys and pedals. */
     release() {
         for (const n of [...this.down, ...this.waiting]) {
             this.synth.noteOff(this.ch, n);
             this.onKey(n, 0, 0);
         }
         this.synth.controllerChange(this.ch, 64, 0);
-        this.down.clear(); this.caught.clear(); this.waiting.clear();
-        this.sostenuto = this.soft = false;
-        this.sustain = 0;
+        this.down.clear();
+        this.caught.clear();
+        this.waiting.clear();
+        this.sostenuto = false;
+        this.soft = false;
     }
 }
