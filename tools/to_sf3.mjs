@@ -24,6 +24,6 @@ await bank.setSampleFormat({
         return ogg;
     },
 });
-const out = bank.writeSF2({ software: 'Piano Room', writeDefaultModulators: true, writeExtendedLimits: true });
+const out = bank.writeSF2({ software: 'P2Piano', writeDefaultModulators: true, writeExtendedLimits: true });
 writeFileSync(dst, Buffer.from(out));
 console.log('wrote', dst, (out.byteLength / 1048576).toFixed(1), 'MiB');

@@ -1,4 +1,4 @@
-# Piano Room
+# P2Piano
 
 An online piano room to play together from a link.
 Players connect to each other directly, with no server of its own.
