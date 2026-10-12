@@ -1,6 +1,6 @@
 import './style.css';
 import {
-    createIcons, Link, Check, Maximize, Minimize, Settings, Piano, LogIn, Plus, Keyboard,
+    createIcons, Link, Check, Maximize, Minimize, Settings, LogIn, Plus, Keyboard,
     ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp, Users,
 } from 'lucide';
 import { BANKS, loadBank, createPiano, Hand } from './audio.js';
@@ -9,7 +9,7 @@ import { PianoView, STYLES } from './view.js';
 import { keyAction, keyLabels, noteLabels, levelVelocity, SUSTAIN_CODE, SOSTENUTO_CODE } from './keys.js';
 
 const ICONS = {
-    Link, Check, Maximize, Minimize, Settings, Piano, LogIn, Plus, Keyboard,
+    Link, Check, Maximize, Minimize, Settings, LogIn, Plus, Keyboard,
     ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp, Users,
 };
 const COLORS = ['#f2b84b', '#5ec7e8', '#ef6f8e', '#8bd17c', '#b28cf2', '#f58d4e', '#4fd1b5', '#e8e15e'];
@@ -244,6 +244,7 @@ function bindKeyboard() {
         if (e.code === 'Enter' || e.code === 'NumpadEnter') {
             e.preventDefault();
             $('chat-input').focus();
+            wakeChat();
             return;
         }
         if (isAlt(e.code)) {
@@ -451,6 +452,20 @@ function bindControls() {
 // Chat
 
 const MAX_MESSAGES = 200;
+const CHAT_IDLE_MS = 6000;
+let chatTimer = 0;
+
+/** Shows the chat, which fades out once nobody has used it for a while. */
+function wakeChat() {
+    $('chat').classList.remove('idle');
+    clearTimeout(chatTimer);
+    chatTimer = setTimeout(restChat, CHAT_IDLE_MS);
+}
+
+function restChat() {
+    if ($('chat').contains(document.activeElement) || $('players').matches(':hover')) wakeChat();
+    else $('chat').classList.add('idle');
+}
 
 function bindChat() {
     const input = $('chat-input');
@@ -468,6 +483,11 @@ function bindChat() {
     input.addEventListener('keydown', e => {
         if (e.code === 'Escape') input.blur();
     });
+    $('players').addEventListener('pointerenter', wakeChat);
+    $('players').addEventListener('pointerleave', wakeChat);
+    input.addEventListener('focus', wakeChat);
+    input.addEventListener('blur', wakeChat);
+    wakeChat();
 }
 
 function addMessage(info, text) {
@@ -481,6 +501,7 @@ function addMessage(info, text) {
     list.append(li);
     while (list.children.length > MAX_MESSAGES) list.firstChild.remove();
     if (atEnd) list.scrollTop = list.scrollHeight;
+    wakeChat();
 }
 
 function renderPeople() {
