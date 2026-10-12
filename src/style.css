@@ -69,20 +69,51 @@ input:not([type]), input[type=text] {
 #start button { height: 40px; }
 
 /* Room */
-#room { height: 100%; display: grid; grid-template-rows: auto 1fr minmax(120px, 24vh); }
+#room {
+    height: 100%; display: grid;
+    grid-template-rows: auto 1fr minmax(120px, 24vh);
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+    grid-template-areas: "head head" "side stage" "side keys";
+}
+header { grid-area: head; }
+#players { grid-area: side; }
+#stage { grid-area: stage; }
+#keys { grid-area: keys; }
 header {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
     padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
 }
-#room-name { color: var(--muted); font-family: ui-monospace, monospace; }
-#people { display: flex; gap: 6px; flex-wrap: wrap; list-style: none; margin: 0; padding: 0; flex: 1; }
-#people li {
-    display: inline-flex; align-items: center; gap: 6px;
-    height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 14px;
+#room-name { color: var(--muted); font-family: ui-monospace, monospace; flex: 1; }
+#players {
+    min-height: 0; display: flex; flex-direction: column; padding: 10px 8px;
+    background: var(--panel); border-right: 1px solid var(--line);
 }
-#people li.self { border-color: var(--muted); }
-#people small { color: var(--muted); }
-.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+#players h2 {
+    display: flex; align-items: center; gap: 6px; margin: 0 8px 8px;
+    font-size: 12px; font-weight: 600; color: var(--muted);
+}
+#players h2 svg { width: 14px; height: 14px; }
+#people { display: grid; gap: 2px; list-style: none; margin: 0; padding: 0; max-height: 40%; overflow-y: auto; flex: none; }
+#people li {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    padding: 5px 8px; border-radius: 6px;
+    color: color-mix(in srgb, var(--c) 62%, black); font-weight: 600;
+}
+@media (prefers-color-scheme: dark) { #people li, #messages b { color: var(--c); } }
+#people li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#people li.self { background: color-mix(in srgb, var(--c) 14%, transparent); }
+#chat {
+    flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px;
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);
+}
+#messages {
+    flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 0 8px;
+    display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere;
+}
+#messages li:first-child { margin-top: auto; }
+#messages b { color: color-mix(in srgb, var(--c) 62%, black); }
+#chat-input { height: 34px; width: 100%; flex: none; }
+#people small { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; flex: none; }
 
 #loading { display: flex; align-items: center; gap: 8px; color: var(--muted); }
 #loading .bar { width: 120px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
@@ -208,6 +239,15 @@ header {
 @media (max-width: 700px) {
     .key span { display: none; }
     .meters .pedal, .meters .toggle { display: none; }
+    #room {
+        grid-template-rows: auto auto 1fr minmax(120px, 24vh);
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas: "head" "side" "stage" "keys";
+    }
+    #players { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 8px; border-right: 0; border-bottom: 1px solid var(--line); }
+    #players h2 { margin: 0 6px 0 4px; }
+    #people { display: flex; flex: 1; overflow-x: auto; }
+    #chat { flex-basis: 100%; margin: 0; padding-top: 6px; max-height: 120px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

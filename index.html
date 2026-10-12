@@ -20,7 +20,6 @@
     <header>
         <button id="invite" type="button" title="Copy the room link"><i data-lucide="link"></i><span>Invite</span></button>
         <span id="room-name" title="Room"></span>
-        <ul id="people" aria-label="Players" aria-live="polite"></ul>
         <div id="loading" role="status" hidden><span id="loading-text"></span><div class="bar"><div id="loading-bar"></div></div></div>
         <div class="meters">
             <span class="meter" title="Last velocity">Velocity <b id="vel-last">–</b></span>
@@ -78,6 +77,15 @@
         <p class="credit">Salamander Grand Piano by Alexander Holm, <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>; SF2 by <a href="https://freepats.zenvoid.org/" target="_blank" rel="noopener">FreePats</a>.
             <a href="https://github.com/MyBlackMIDIScore/AmethystImperialGrand" target="_blank" rel="noopener">Amethyst Imperial Grand</a> by MBMS, samples <a href="https://creativecommons.org/licenses/by-nd/4.0/" target="_blank" rel="noopener">CC BY-ND 4.0</a>, unmodified and converted to SF3.</p>
     </div>
+
+    <aside id="players" aria-label="Players">
+        <h2 title="Players"><i data-lucide="users"></i><span id="people-count"></span></h2>
+        <ul id="people" aria-live="polite"></ul>
+        <form id="chat">
+            <ol id="messages" aria-label="Chat" aria-live="polite"></ol>
+            <input id="chat-input" placeholder="Message (Enter)" aria-label="Message" autocomplete="off" enterkeyhint="send">
+        </form>
+    </aside>
 
     <section id="stage" aria-hidden="true"><canvas id="rise"></canvas></section>
     <div id="keys" role="img" aria-label="Piano keyboard"></div>

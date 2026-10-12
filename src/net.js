@@ -6,18 +6,20 @@ export const APP_ID = 'quartzmidi-piano-room';
 const HEARTBEAT_MS = 1000;
 const PING_MS = 3000;
 const LATENESS_WINDOW = 48;
+export const MAX_CHAT = 300;
 const MAX_HOLD_MS = 80;
 
 export { selfId };
 
 /**
  * Joins a room.
- * handlers: onPeer(id, info), onLeave(id), onMidi(id, status, a, b, holdMs), onPing(id, ms)
+ * handlers: onPeer(id, info), onLeave(id), onMidi(id, status, a, b, holdMs), onPing(id, ms), onChat(id, text)
  */
 export function connect(roomId, me, handlers) {
     const room = joinRoom({ appId: APP_ID }, roomId);
     const hi = room.makeAction('hi');
     const ev = room.makeAction('ev');
+    const chat = room.makeAction('chat');
     const peers = new Map(); // id -> { lateness: number[] }
     let queue = null;
 
@@ -53,6 +55,10 @@ export function connect(roomId, me, handlers) {
         for (let i = 1; i + 2 < msg.length; i += 3) handlers.onMidi(peerId, msg[i] | 0, msg[i + 1] | 0, msg[i + 2] | 0, hold);
     };
 
+    chat.onMessage = (text, { peerId }) => {
+        if (typeof text === 'string' && text.trim()) handlers.onChat(peerId, text.trim().slice(0, MAX_CHAT));
+    };
+
     const beat = setInterval(() => ev.send([performance.now()]), HEARTBEAT_MS);
     const pings = setInterval(() => {
         for (const id of peers.keys()) room.ping(id).then(ms => handlers.onPing(id, ms), () => {});
@@ -66,6 +72,9 @@ export function connect(roomId, me, handlers) {
                 queueMicrotask(() => { ev.send(queue); queue = null; });
             }
             queue.push(status, a, b);
+        },
+        say(text) {
+            chat.send(text);
         },
         setMe(info) {
             me = info;

@@ -22,6 +22,12 @@ Sent to each peer as it joins, and to everyone when the player renames.
 The name is at most 24 characters.
 The color is one of `#f2b84b #5ec7e8 #ef6f8e #8bd17c #b28cf2 #f58d4e #4fd1b5 #e8e15e`; a receiver shows another one when the color is taken.
 
+### `chat`
+
+`string`
+
+A chat message to everyone, at most 300 characters; a receiver trims it and drops it when empty.
+
 ### `ev`
 
 `[t, status, a, b, status, a, b, ...]`

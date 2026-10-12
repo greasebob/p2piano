@@ -1,16 +1,16 @@
 import './style.css';
 import {
     createIcons, Link, Check, Maximize, Minimize, Settings, Piano, LogIn, Plus, Keyboard,
-    ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp,
+    ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp, Users,
 } from 'lucide';
 import { BANKS, loadBank, createPiano, Hand } from './audio.js';
-import { connect, selfId } from './net.js';
+import { connect, selfId, MAX_CHAT } from './net.js';
 import { PianoView, STYLES } from './view.js';
 import { keyAction, keyLabels, noteLabels, levelVelocity, SUSTAIN_CODE, SOSTENUTO_CODE } from './keys.js';
 
 const ICONS = {
     Link, Check, Maximize, Minimize, Settings, Piano, LogIn, Plus, Keyboard,
-    ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp,
+    ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp, Users,
 };
 const COLORS = ['#f2b84b', '#5ec7e8', '#ef6f8e', '#8bd17c', '#b28cf2', '#f58d4e', '#4fd1b5', '#e8e15e'];
 const PEER_CHANNELS = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]; // 0 is ours, 9 is drums, 15 preloads
@@ -102,8 +102,12 @@ function enter() {
             p.ping = Math.round(ms);
             renderPeople();
         },
+        onChat(id, text) {
+            addMessage(peer(id).info, text);
+        },
     });
     renderPeople();
+    bindChat();
     bindKeyboard();
     bindMidi();
     bindControls();
@@ -236,6 +240,11 @@ function bindKeyboard() {
         if (isTabbed(e.target)) {
             if (e.code === 'Escape' && !e.target.closest('[popover]')) e.target.blur();
             if (CONTROL_KEYS.has(e.code)) return;
+        }
+        if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+            e.preventDefault();
+            $('chat-input').focus();
+            return;
         }
         if (isAlt(e.code)) {
             e.preventDefault(); // keeps the browser menu from taking focus
@@ -439,18 +448,51 @@ function bindControls() {
     document.addEventListener('keydown', resume);
 }
 
+// Chat
+
+const MAX_MESSAGES = 200;
+
+function bindChat() {
+    const input = $('chat-input');
+    input.maxLength = MAX_CHAT;
+    // Enter sends and Escape leaves, so the keys go back to the piano either way.
+    $('chat').addEventListener('submit', e => {
+        e.preventDefault();
+        const text = input.value.trim().slice(0, MAX_CHAT);
+        input.value = '';
+        input.blur();
+        if (!text) return;
+        net.say(text);
+        addMessage(me, text);
+    });
+    input.addEventListener('keydown', e => {
+        if (e.code === 'Escape') input.blur();
+    });
+}
+
+function addMessage(info, text) {
+    const list = $('messages');
+    const atEnd = list.scrollTop + list.clientHeight >= list.scrollHeight - 8;
+    const li = document.createElement('li');
+    const name = document.createElement('b');
+    name.textContent = info.name;
+    name.style.setProperty('--c', info.color);
+    li.append(name, ' ', text);
+    list.append(li);
+    while (list.children.length > MAX_MESSAGES) list.firstChild.remove();
+    if (atEnd) list.scrollTop = list.scrollHeight;
+}
+
 function renderPeople() {
     const ul = $('people');
     ul.replaceChildren();
-    const chip = (info, ping, self) => {
+    const row = (info, ping, self) => {
         const li = document.createElement('li');
         if (self) li.className = 'self';
-        const dot = document.createElement('i');
-        dot.className = 'dot';
-        dot.style.background = info.color;
+        li.style.setProperty('--c', info.color);
         const name = document.createElement('span');
         name.textContent = info.name;
-        li.append(dot, name);
+        li.append(name);
         if (ping != null) {
             const ms = document.createElement('small');
             ms.textContent = `${ping} ms`;
@@ -458,8 +500,9 @@ function renderPeople() {
         }
         ul.append(li);
     };
-    chip(me, null, true);
-    for (const p of peers.values()) chip(p.info, p.ping, false);
+    row(me, null, true);
+    for (const p of peers.values()) row(p.info, p.ping, false);
+    $('people-count').textContent = peers.size + 1;
 }
 
 /** Shows loading progress (0-1) or an error in the header; null text hides it. */
