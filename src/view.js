@@ -36,14 +36,16 @@ const toLinear = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
 const toSrgb = v => (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055);
 
 /**
- * A color seen as a light of the given brightness (0 to 1): black at 0, the color itself near
- * 0.6, and toward white above that as its strongest channels saturate.
+ * A color seen as a light of the given brightness (0 to 1): black at 0, the color itself at 0.5,
+ * and toward white above that, its strongest channels saturating first.
  */
 function light(hex, brightness) {
-    const exposure = 4.2 * brightness * brightness;
+    const k = brightness / 0.5;
+    const over = 0.85 * Math.max(0, k - 1);
     return '#' + rgb(hex).map(v => {
-        const out = toSrgb(1 - Math.exp(-toLinear(v / 255) * exposure));
-        return Math.round(out * 255).toString(16).padStart(2, '0');
+        const lin = toLinear(v / 255);
+        const out = k <= 1 ? lin * k * k : 1 - (1 - lin) * (1 - over) ** (1 + 2 * lin);
+        return Math.round(toSrgb(out) * 255).toString(16).padStart(2, '0');
     }).join('');
 }
 
@@ -92,14 +94,14 @@ const NOTES = {
         g.fill();
     },
     glow(g, t, c, x, y, w, h, dpr, glow) {
-        const r = Math.min(w * 0.35, 6);
+        // Solid blocks with a soft halo
         if (glow > 0) {
-            g.shadowColor = rgba(c, 0.9);
-            g.shadowBlur = 24 * glow * dpr;
+            g.shadowColor = rgba(c, 0.8);
+            g.shadowBlur = 20 * glow * dpr;
         }
-        g.fillStyle = rgba(c, t.alpha);
+        g.fillStyle = rgba(c, 1);
         g.beginPath();
-        g.roundRect(x, y, w, h, r);
+        g.roundRect(x, y, w, h, Math.min(w * 0.15, 2));
         g.fill();
         g.shadowBlur = 0;
     },
@@ -124,8 +126,8 @@ export class PianoView {
         this.emitted = new Map(); // note -> fractional sparks owed
         this.style = 'glow';
         this.colors = 'player';
-        this.custom = { white: '#4fa3ff', black: '#ff5fa2' };
-        this.glow = 0.6;
+        this.custom = { white: '#14e0b0', black: '#ff1a8c' };
+        this.glow = 0.5;
         this.lights = new Map(); // color -> color at the current brightness
         this.last = performance.now();
         for (let n = LOW; n <= HIGH; n++) {
@@ -267,7 +269,6 @@ export class PianoView {
         const glow = this.style === 'glow';
         this.trails = this.trails.filter(t => t.end === null || (now - t.end) / 1000 * RISE_PX_PER_S < h);
 
-        g.globalCompositeOperation = glow ? 'lighter' : 'source-over';
         const notes = NOTES[this.style];
         const halo = this.trails.length <= GLOW_LIMIT ? this.glow : 0;
         // Notes of black keys are drawn over those of white keys.
@@ -279,8 +280,11 @@ export class PianoView {
             const x = box.x * w + 1, bw = Math.max(2, box.w * w - 2);
             notes(g, t, rgb(this.colorOf(t.note, t.color)), x, top, bw, Math.max(2, bottom - top), dpr, halo);
         }
-        if (glow && this.glow > 0) this.drawSparks(g, w, h, now, dt);
-        g.globalCompositeOperation = 'source-over';
+        if (glow && this.glow > 0) {
+            g.globalCompositeOperation = 'lighter';
+            this.drawSparks(g, w, h, now, dt);
+            g.globalCompositeOperation = 'source-over';
+        }
         requestAnimationFrame(() => this.draw());
     }
 

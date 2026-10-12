@@ -391,7 +391,7 @@ function bindControls() {
         store.set('pr-reverb', $('reverb').value);
         piano?.setReverb(+$('reverb').value);
     });
-    $('brightness').value = store.get('pr-brightness', '60');
+    $('brightness').value = store.get('pr-brightness', '50');
     for (const id of ['volume', 'reverb', 'brightness']) {
         const show = () => { $(`${id}-val`).value = $(id).value; };
         $(id).addEventListener('input', show);
