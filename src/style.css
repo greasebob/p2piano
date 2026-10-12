@@ -36,7 +36,11 @@ body {
 [hidden] { display: none !important; }
 svg.lucide { width: 18px; height: 18px; flex: none; }
 
-button, input { font: inherit; color: inherit; }
+button, input, select { font: inherit; color: inherit; }
+select {
+    height: 34px; padding: 0 8px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+}
 button {
     display: inline-flex; align-items: center; gap: 6px;
     height: 34px; padding: 0 12px;

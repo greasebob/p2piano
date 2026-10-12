@@ -1,7 +1,11 @@
 import { WorkletSynthesizer } from 'spessasynth_lib';
 import processorUrl from 'spessasynth_lib/dist/spessasynth_processor.min.js?url';
 
-export const BANK_URL = `${import.meta.env.BASE_URL}soundfonts/salamander-grand-v1.sf3`;
+/** The pianos by velocity layer count, each with one velocity inside every layer to preload. */
+export const BANKS = {
+    8: { url: `${import.meta.env.BASE_URL}soundfonts/salamander-grand-v1.sf3`, strikes: [20, 40, 50, 64, 80, 96, 112, 125] },
+    16: { url: `${import.meta.env.BASE_URL}soundfonts/salamander-grand-16-v1.sf3`, strikes: [13, 30, 35, 40, 45, 48, 53, 60, 68, 76, 84, 92, 100, 108, 116, 124] },
+};
 const CACHE = 'piano-room-banks-v1';
 const PRELOAD_CHANNEL = 15;
 const SOFT_PEDAL_SCALE = 0.6;
@@ -35,7 +39,8 @@ export async function loadBank(url, onProgress) {
         try {
             await cache.put(url, new Response(blob, { headers: { 'content-type': 'application/octet-stream' } }));
             const keys = await cache.keys();
-            await Promise.all(keys.filter(k => !k.url.endsWith(new URL(url, location.href).pathname)).map(k => cache.delete(k)));
+            const known = Object.values(BANKS).map(b => new URL(b.url, location.href).href);
+            await Promise.all(keys.filter(k => !known.includes(k.url)).map(k => cache.delete(k)));
         } catch { /* quota: it downloads again next time */ }
     }
     onProgress(1);
@@ -46,7 +51,7 @@ export async function loadBank(url, onProgress) {
  * The synth and the output chain: synth -> volume -> limiter -> speakers.
  * Every sample is decoded before play, so no first strike waits on a Vorbis decode.
  */
-export async function createPiano(ctx, bank, onPreload) {
+export async function createPiano(ctx, bank, strikes, onPreload) {
     await ctx.audioWorklet.addModule(processorUrl);
     const synth = new WorkletSynthesizer(ctx);
     const volume = ctx.createGain();
@@ -61,25 +66,32 @@ export async function createPiano(ctx, bank, onPreload) {
     await synth.soundBankManager.addSoundBank(bank, 'main');
     await synth.isReady;
     synth.setSystemParameter('interpolationType', 2); // hermite
-
-    // Strike every sample once, silently, on a channel nobody plays.
-    synth.controllerChange(PRELOAD_CHANNEL, 7, 0);
-    synth.controllerChange(PRELOAD_CHANNEL, 11, 0);
-    const layers = [20, 40, 50, 64, 80, 96, 112, 125];
-    for (let i = 0; i < layers.length; i++) {
-        for (let note = 21; note <= 108; note += 3) synth.noteOn(PRELOAD_CHANNEL, note, layers[i]);
-        for (let note = 21; note <= 108; note += 3) synth.noteOff(PRELOAD_CHANNEL, note);
-        await synth.getSnapshot(); // returns once the worklet has handled the strikes above
-        onPreload((i + 1) / layers.length);
-    }
-    synth.stopAll(true);
+    await preload(synth, strikes, onPreload);
 
     const piano = {
         synth,
         setVolume(v) { volume.gain.value = 3 * v * v; },
         setReverb(v) { for (let ch = 0; ch < 16; ch++) synth.controllerChange(ch, 91, v); },
+        /** Swaps in another bank; the one playing keeps sounding until the new one is decoded. */
+        async setBank(buffer, strikes, onPreload) {
+            await synth.soundBankManager.addSoundBank(buffer, 'main');
+            await preload(synth, strikes, onPreload);
+        },
     };
     return piano;
+}
+
+/** Strikes every sample once, silently, on a channel nobody plays. */
+async function preload(synth, strikes, onProgress) {
+    synth.controllerChange(PRELOAD_CHANNEL, 7, 0);
+    synth.controllerChange(PRELOAD_CHANNEL, 11, 0);
+    for (let i = 0; i < strikes.length; i++) {
+        for (let note = 21; note <= 108; note += 3) synth.noteOn(PRELOAD_CHANNEL, note, strikes[i]);
+        for (let note = 21; note <= 108; note += 3) synth.noteOff(PRELOAD_CHANNEL, note);
+        await synth.getSnapshot(); // returns once the worklet has handled the strikes above
+        onProgress((i + 1) / strikes.length);
+    }
+    synth.controllerChange(PRELOAD_CHANNEL, 120, 0); // all sound off, on this channel alone
 }
 
 /**

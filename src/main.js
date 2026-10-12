@@ -1,6 +1,6 @@
 import './style.css';
 import { createIcons, Link, Check, Maximize, Minimize, Settings, Piano, LogIn, Plus, Keyboard } from 'lucide';
-import { BANK_URL, loadBank, createPiano, Hand } from './audio.js';
+import { BANKS, loadBank, createPiano, Hand } from './audio.js';
 import { connect, selfId } from './net.js';
 import { PianoView } from './view.js';
 import { keyAction, keyLabels, levelVelocity, SUSTAIN_CODE, SOSTENUTO_CODE } from './keys.js';
@@ -97,15 +97,37 @@ function enter() {
 }
 
 async function start() {
+    const layers = $('layers').value;
     setStatus('Piano', false, 0);
-    const bank = await loadBank(BANK_URL, f => setStatus('Piano', false, f * 0.8));
-    piano = await createPiano(ctx, bank, f => setStatus('Piano', false, 0.8 + f * 0.2));
+    const bank = await loadBank(BANKS[layers].url, f => setStatus('Piano', false, f * 0.8));
+    piano = await createPiano(ctx, bank, BANKS[layers].strikes, f => setStatus('Piano', false, 0.8 + f * 0.2));
+    loadedLayers = layers;
     piano.setVolume(+$('volume').value / 100);
     piano.setReverb(+$('reverb').value);
     myHand = new Hand(piano.synth, 0, (note, vel, delay) => view.key(selfId, note, vel, me.color));
     for (const p of peers.values()) attachHand(p);
     setStatus(null);
+    changeLayers(); // in case they were changed while the first piano loaded
     if (ctx.state !== 'running') await ctx.resume();
+}
+
+let loadedLayers = null;
+let bankJob = Promise.resolve();
+
+/** Loads the piano with the chosen layer count, one switch at a time. */
+function changeLayers() {
+    bankJob = bankJob.then(async () => {
+        const layers = $('layers').value;
+        if (!piano || layers === loadedLayers) return;
+        setStatus('Piano', false, 0);
+        const bank = await loadBank(BANKS[layers].url, f => setStatus('Piano', false, f * 0.8));
+        if ($('layers').value === layers) {
+            await piano.setBank(bank, BANKS[layers].strikes, f => setStatus('Piano', false, 0.8 + f * 0.2));
+            loadedLayers = layers;
+        }
+        setStatus(null);
+        changeLayers(); // they may have changed again meanwhile
+    }).catch(err => setStatus(`${err.message || err}`, true));
 }
 
 function peer(id) {
@@ -266,6 +288,8 @@ function bindControls() {
     $('reverb').value = store.get('pr-reverb', '40');
     $('volume').addEventListener('input', () => { store.set('pr-volume', $('volume').value); piano?.setVolume(+$('volume').value / 100); });
     $('reverb').addEventListener('input', () => { store.set('pr-reverb', $('reverb').value); piano?.setReverb(+$('reverb').value); });
+    $('layers').value = store.get('pr-layers', '8') === '16' ? '16' : '8';
+    $('layers').addEventListener('change', () => { store.set('pr-layers', $('layers').value); changeLayers(); });
     // The first click anywhere also wakes audio a browser started suspended.
     document.addEventListener('pointerdown', () => { if (ctx.state !== 'running') ctx.resume(); });
     document.addEventListener('keydown', () => { if (ctx.state !== 'running') ctx.resume(); });

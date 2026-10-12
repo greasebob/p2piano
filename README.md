@@ -23,11 +23,20 @@ npm run dev
 npm run build
 ```
 
+The pianos are built from FreePats' `SalamanderGrandPiano-V3+20200602.sf2` with Python 3, numpy and ffmpeg:
+
+```
+python tools/build_bank.py SalamanderGrandPiano-V3+20200602.sf2 salamander-8.sf2 8
+node tools/to_sf3.mjs salamander-8.sf2 public/soundfonts/salamander-grand-v1.sf3 8
+python tools/build_bank.py SalamanderGrandPiano-V3+20200602.sf2 salamander-16.sf2 16
+node tools/to_sf3.mjs salamander-16.sf2 public/soundfonts/salamander-grand-16-v1.sf3 8
+```
+
 The protocol is in [PROTOCOL.md](PROTOCOL.md).
 
 ## Credits
 
-- Piano: [Salamander Grand Piano](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html) by Alexander Holm, [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/); SF2 by FreePats. Reduced here to 8 velocity layers at 44.1 kHz and compressed to SF3.
+- Piano: [Salamander Grand Piano](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html) by Alexander Holm, [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/); SF2 by FreePats. Resampled to 44.1 kHz, as 8 or all 16 velocity layers, and compressed to SF3.
 - Synth: [SpessaSynth](https://github.com/spessasus/SpessaSynth), Apache 2.0.
 - Connections: [Trystero](https://github.com/dmotz/trystero), MIT.
 - Icons: [Lucide](https://lucide.dev), ISC.
