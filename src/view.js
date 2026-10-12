@@ -102,12 +102,6 @@ const NOTES = {
         g.roundRect(x, y, w, h, r);
         g.fill();
         g.shadowBlur = 0;
-        if (w > 4) {
-            g.fillStyle = `rgba(255,255,255,${0.22 * t.alpha})`;
-            g.beginPath();
-            g.roundRect(x + w * 0.3, y + 1, w * 0.4, Math.max(0, h - 2), r);
-            g.fill();
-        }
     },
 };
 
