@@ -47,6 +47,18 @@ export function keyAction(e) {
 
 const SHIFTED_DIGITS = { 1: '!', 2: '@', 4: '$', 5: '%', 6: '^', 8: '*', 9: '(' };
 
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+/** Returns the note name for each of the 88 keys. C carries its octave, as in C4 for middle C. */
+export function noteLabels() {
+    const labels = {};
+    for (let n = 21; n <= 108; n++) {
+        const name = NOTE_NAMES[n % 12];
+        labels[n] = name === 'C' ? `C${Math.floor(n / 12) - 1}` : name;
+    }
+    return labels;
+}
+
 /** Returns the key label for each note, as written in sheets. */
 export function keyLabels() {
     const labels = {};

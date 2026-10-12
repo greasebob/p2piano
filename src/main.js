@@ -3,12 +3,13 @@ import { createIcons, Link, Check, Maximize, Minimize, Settings, Piano, LogIn, P
 import { BANKS, loadBank, createPiano, Hand } from './audio.js';
 import { connect, selfId } from './net.js';
 import { PianoView } from './view.js';
-import { keyAction, keyLabels, levelVelocity, SUSTAIN_CODE, SOSTENUTO_CODE } from './keys.js';
+import { keyAction, keyLabels, noteLabels, levelVelocity, SUSTAIN_CODE, SOSTENUTO_CODE } from './keys.js';
 
 const ICONS = { Link, Check, Maximize, Minimize, Settings, Piano, LogIn, Plus, Keyboard };
 const COLORS = ['#f2b84b', '#5ec7e8', '#ef6f8e', '#8bd17c', '#b28cf2', '#f58d4e', '#4fd1b5', '#e8e15e'];
 const PEER_CHANNELS = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]; // 0 is ours, 9 is drums, 15 preloads
 const ROOM_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789';
+const LABELS = { qwerty: keyLabels(), notes: noteLabels() };
 
 const $ = id => document.getElementById(id);
 const icons = () => createIcons({ icons: ICONS });
@@ -59,7 +60,8 @@ function enter() {
     window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue = ''; });
 
     ctx = new AudioContext({ latencyHint: 'interactive' });
-    view = new PianoView($('keys'), $('rise'), keyLabels(), (note, vel) => local(vel ? 0x90 : 0x80, note, vel));
+    $('labels').value = store.get('pr-labels', 'qwerty') === 'notes' ? 'notes' : 'qwerty';
+    view = new PianoView($('keys'), $('rise'), LABELS[$('labels').value], (note, vel) => local(vel ? 0x90 : 0x80, note, vel));
     net = connect(roomId, me, {
         onPeer(id, info) {
             const p = peer(id);
@@ -334,6 +336,10 @@ function bindControls() {
     $('reverb').addEventListener('input', () => {
         store.set('pr-reverb', $('reverb').value);
         piano?.setReverb(+$('reverb').value);
+    });
+    $('labels').addEventListener('change', () => {
+        store.set('pr-labels', $('labels').value);
+        view.setLabels(LABELS[$('labels').value]);
     });
     $('layers').value = store.get('pr-layers', '8') === '16' ? '16' : '8';
     $('layers').addEventListener('change', () => {

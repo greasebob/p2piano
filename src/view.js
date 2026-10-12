@@ -35,16 +35,18 @@ export class PianoView {
             el.style.left = `${box.x * 100}%`;
             el.style.width = `${box.w * 100}%`;
             el.dataset.note = n;
-            if (labels[n]) {
-                const label = document.createElement('span');
-                label.textContent = labels[n];
-                el.append(label);
-            }
+            el.append(document.createElement('span'));
             keysEl.append(el);
             this.keys.set(n, el);
         }
+        this.setLabels(labels);
         this.bindPointer(keysEl, onPress);
         requestAnimationFrame(() => this.draw());
+    }
+
+    /** @param {Record<number,string>} labels */
+    setLabels(labels) {
+        for (const [n, el] of this.keys) el.firstChild.textContent = labels[n] ?? '';
     }
 
     bindPointer(keysEl, onPress) {
