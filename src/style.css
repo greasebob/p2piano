@@ -75,10 +75,10 @@ input:not([type]), input[type=text] {
     height: 100%; display: grid;
     grid-template-rows: auto 1fr minmax(120px, 24vh);
     grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
-    grid-template-areas: "head head" "side stage" "side keys";
+    grid-template-areas: "head head" "stage stage" "keys keys";
 }
 header { grid-area: head; }
-#players { grid-area: side; }
+#players { grid-area: 2 / 1 / 3 / 2; z-index: 1; } /* floats over the stage, which keeps the full width */
 #stage { grid-area: stage; }
 #keys { grid-area: keys; }
 header {
@@ -88,7 +88,8 @@ header {
 #room-name { color: var(--muted); font-family: ui-monospace, monospace; flex: 1; }
 #players {
     min-height: 0; display: flex; flex-direction: column; padding: 10px 8px;
-    background: var(--panel); border-right: 1px solid var(--line);
+    background: color-mix(in srgb, var(--panel) 55%, transparent); border-right: 1px solid var(--line);
+    backdrop-filter: blur(10px);
 }
 #players h2 {
     display: flex; align-items: center; gap: 6px; margin: 0 8px 8px;
@@ -246,7 +247,7 @@ header {
         grid-template-columns: minmax(0, 1fr);
         grid-template-areas: "head" "side" "stage" "keys";
     }
-    #players { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 8px; border-right: 0; border-bottom: 1px solid var(--line); }
+    #players { grid-area: side; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 8px; border-right: 0; border-bottom: 1px solid var(--line); }
     #players h2 { margin: 0 6px 0 4px; }
     #people { display: flex; flex: 1; overflow-x: auto; }
     #chat { flex-basis: 100%; margin: 0; padding-top: 6px; max-height: 120px; }
