@@ -37,14 +37,14 @@ const toSrgb = v => (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055
 
 /**
  * A color seen as a light of the given brightness (0 to 1): black at 0, the color itself at 0.5,
- * and toward white above that, its strongest channels saturating first.
+ * and paler above that, its strongest channels saturating first.
  */
 function light(hex, brightness) {
     const k = brightness / 0.5;
-    const over = 0.85 * Math.max(0, k - 1);
+    const over = 0.3 * Math.max(0, k - 1); // at full brightness a pastel, still tinted
     return '#' + rgb(hex).map(v => {
         const lin = toLinear(v / 255);
-        const out = k <= 1 ? lin * k * k : 1 - (1 - lin) * (1 - over) ** (1 + 2 * lin);
+        const out = k <= 1 ? lin * k ** 4 : 1 - (1 - lin) * (1 - over) ** (1 + 2 * lin);
         return Math.round(toSrgb(out) * 255).toString(16).padStart(2, '0');
     }).join('');
 }
@@ -94,15 +94,17 @@ const NOTES = {
         g.fill();
     },
     glow(g, t, c, x, y, w, h, dpr, glow) {
-        // Solid blocks with a soft halo
-        if (glow > 0) {
-            g.shadowColor = rgba(c, 0.8);
-            g.shadowBlur = 20 * glow * dpr;
-        }
+        // Solid blocks with a halo that is faint at medium brightness and blooms above it
+        const k = glow / 0.5;
         g.fillStyle = rgba(c, 1);
         g.beginPath();
         g.roundRect(x, y, w, h, Math.min(w * 0.15, 2));
+        if (glow > 0) {
+            g.shadowColor = rgba(c, k <= 1 ? 0.6 * k ** 3 : Math.min(1, 0.6 + 0.4 * (k - 1)));
+            g.shadowBlur = 6 * k ** 2.5 * dpr;
+        }
         g.fill();
+        if (k > 1) g.fill(); // a second pass strengthens the bloom
         g.shadowBlur = 0;
     },
 };
