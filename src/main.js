@@ -1,7 +1,7 @@
 import './style.css';
 import {
     createIcons, Link, Check, Maximize, Minimize, Settings, Piano, LogIn, Plus, Keyboard,
-    ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+    ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp,
 } from 'lucide';
 import { BANKS, loadBank, createPiano, Hand } from './audio.js';
 import { connect, selfId } from './net.js';
@@ -10,7 +10,7 @@ import { keyAction, keyLabels, noteLabels, levelVelocity, SUSTAIN_CODE, SOSTENUT
 
 const ICONS = {
     Link, Check, Maximize, Minimize, Settings, Piano, LogIn, Plus, Keyboard,
-    ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+    ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp,
 };
 const COLORS = ['#f2b84b', '#5ec7e8', '#ef6f8e', '#8bd17c', '#b28cf2', '#f58d4e', '#4fd1b5', '#e8e15e'];
 const PEER_CHANNELS = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]; // 0 is ours, 9 is drums, 15 preloads
@@ -217,17 +217,19 @@ function bindKeyboard() {
     const CONTROL_KEYS = new Set(['Space', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
     const isTabbed = el => el !== document.body && el.matches?.(':focus-visible');
     const pedalCC = code => (code === SUSTAIN_CODE ? 64 : 66);
-    const inverted = code => code === SUSTAIN_CODE && $('sus-invert').checked;
+    const inverted = code => code === SUSTAIN_CODE && $('sus-invert').ariaPressed === 'true';
     const pedal = (code, down) => local(0xb0, pedalCC(code), down !== inverted(code) ? 127 : 0);
     $('vel-key').textContent = keyboardVelocity;
 
     // Inverted sustain holds the pedal down while Space is up.
-    $('sus-invert').checked = store.get('pr-sus-invert', '0') === '1';
-    $('sus-invert').addEventListener('change', () => {
-        store.set('pr-sus-invert', $('sus-invert').checked ? '1' : '0');
+    const invert = $('sus-invert');
+    invert.ariaPressed = String(store.get('pr-sus-invert', '0') === '1');
+    invert.addEventListener('click', () => {
+        invert.ariaPressed = String(invert.ariaPressed !== 'true');
+        store.set('pr-sus-invert', invert.ariaPressed === 'true' ? '1' : '0');
         pedal(SUSTAIN_CODE, pedals.has(SUSTAIN_CODE));
     });
-    if ($('sus-invert').checked) pedal(SUSTAIN_CODE, false);
+    if (inverted(SUSTAIN_CODE)) pedal(SUSTAIN_CODE, false);
 
     window.addEventListener('keydown', e => {
         if (isText(e.target)) return;

@@ -11,7 +11,7 @@ Play from a MIDI keyboard, the mouse, or the computer keyboard with the Roblox p
 - `1`-`m` white keys C2-C7, Shift for sharps
 - Ctrl+`1`-`t` A0-B1, Ctrl+`y`-`j` C#7-C8
 - Alt+`1`-`c` velocity, 32 levels
-- Space sustain, `]` sostenuto; inverted sustain is in Settings
+- Space sustain, `]` sostenuto; Invert beside the Sustain chip holds the pedal down until Space
 - Arrow keys transpose: left and right by a semitone, down and up by an octave
 
 Chrome keeps Ctrl+W and Ctrl+T for itself unless the room is full screen.

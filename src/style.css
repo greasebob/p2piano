@@ -107,6 +107,9 @@ header {
 .transpose button:focus-visible { position: relative; z-index: 1; }
 #transpose { width: 40px; font-variant-numeric: tabular-nums; font-weight: 600; }
 .pedal.on { background: var(--accent); border-color: var(--accent); color: #1a1406; }
+.toggle { height: 26px; padding: 0 10px 0 8px; gap: 4px; border-radius: 13px; color: var(--muted); font-size: 12px; }
+.toggle svg { width: 14px; height: 14px; }
+.toggle[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
 
 #settings {
     margin: 56px 16px auto auto; padding: 16px; width: min(320px, calc(100vw - 32px));
@@ -204,7 +207,7 @@ header {
 [data-style=pfa] .key.black.on::after { background: linear-gradient(to right, var(--c) 12%, color-mix(in srgb, var(--c) 85%, black) 12% 88%, color-mix(in srgb, var(--c) 70%, black) 88%); }
 @media (max-width: 700px) {
     .key span { display: none; }
-    .meters .pedal { display: none; }
+    .meters .pedal, .meters .toggle { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

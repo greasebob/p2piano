@@ -34,6 +34,7 @@
             </span>
             <span class="pedals" role="group" aria-label="Pedals">
                 <span id="ped-sus" class="pedal" title="Sustain (Space)">Sustain</span>
+                <button type="button" id="sus-invert" class="toggle" aria-pressed="false" title="Inverted sustain"><i data-lucide="arrow-down-up"></i>Invert</button>
                 <span id="ped-sos" class="pedal" title="Sostenuto (])">Sostenuto</span>
                 <span id="ped-soft" class="pedal">Soft</span>
             </span>
@@ -69,7 +70,6 @@
             <label><input id="white-color" type="color" value="#14e0b0"> White keys</label>
             <label><input id="black-color" type="color" value="#ff1a8c"> Black keys</label>
         </div>
-        <label class="check"><input id="sus-invert" type="checkbox"> Inverted sustain</label>
         <fieldset>
             <legend>MIDI inputs</legend>
             <ul id="midi-list"></ul>
