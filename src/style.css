@@ -8,6 +8,8 @@
     --white-key: #fbfbf9;
     --black-key: #1f1f22;
     --stage: #ebe9e4;
+    --focus: #9a6500;
+    --error: #c62a2f;
     color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -21,6 +23,8 @@
         --white-key: #e9e9e6;
         --black-key: #161618;
         --stage: #0c0c0e;
+        --focus: #f2b84b;
+        --error: #ff6369;
         color-scheme: dark;
     }
 }
@@ -48,6 +52,8 @@ button {
     cursor: pointer;
 }
 button:hover { border-color: var(--muted); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+button:active { transform: translateY(1px); }
 button.icon { width: 34px; padding: 0; justify-content: center; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #1a1406; font-weight: 600; justify-content: center; }
 input:not([type]), input[type=text] {
@@ -81,33 +87,46 @@ header {
 #loading { display: flex; align-items: center; gap: 8px; color: var(--muted); }
 #loading .bar { width: 120px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 #loading-bar { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
-#loading.error { color: #e5484d; }
+#loading.error { color: var(--error); }
 #loading.error .bar { display: none; }
 
-.meters { display: flex; align-items: center; gap: 6px; }
+.meters { display: flex; align-items: center; gap: 14px; }
+.pedals { display: inline-flex; gap: 4px; }
 .meter { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); min-width: 52px; }
 .meter b { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; }
 .pedal {
-    height: 24px; padding: 0 8px; display: inline-flex; align-items: center;
-    border: 1px solid var(--line); border-radius: 12px; color: var(--muted); font-size: 12px;
+    height: 26px; padding: 0 10px; display: inline-flex; align-items: center;
+    border: 1px solid var(--line); border-radius: 13px; color: var(--muted); font-size: 12px;
+    transition: background-color .08s, color .08s;
 }
 .transpose { display: inline-flex; }
-.transpose button { height: 28px; width: 24px; padding: 0; justify-content: center; border-radius: 0; margin-left: -1px; }
+.transpose button { height: 30px; width: 28px; padding: 0; justify-content: center; border-radius: 0; margin-left: -1px; }
 .transpose button:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
 .transpose button:last-child { border-radius: 0 8px 8px 0; }
 .transpose svg { width: 16px; height: 16px; }
-#transpose { width: 36px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.transpose button:focus-visible { position: relative; z-index: 1; }
+#transpose { width: 40px; font-variant-numeric: tabular-nums; font-weight: 600; }
 .pedal.on { background: var(--accent); border-color: var(--accent); color: #1a1406; }
 
 #settings {
-    margin: 56px 16px auto auto; padding: 16px; width: 300px;
+    margin: 56px 16px auto auto; padding: 16px; width: min(320px, calc(100vw - 32px));
+    max-height: calc(100vh - 72px); overflow-y: auto;
     background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px;
     box-shadow: 0 12px 40px rgb(0 0 0 / .25);
 }
+#settings h2 { margin: 0 0 14px; font-size: 16px; }
 #settings label { display: grid; gap: 4px; margin-bottom: 12px; }
+#settings label > span { display: flex; justify-content: space-between; }
+#settings output { color: var(--muted); font-variant-numeric: tabular-nums; }
 #settings label.check { display: flex; align-items: center; gap: 8px; }
 #settings input[type=range] { width: 100%; accent-color: var(--accent); }
 #settings input[type=checkbox] { margin: 0; accent-color: var(--accent); }
+.swatches { display: flex; gap: 16px; margin: -4px 0 12px; }
+#settings .swatches label { display: flex; align-items: center; gap: 6px; margin: 0; }
+#settings input[type=color] {
+    width: 32px; height: 26px; padding: 2px; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+}
 #settings fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 12px; padding: 8px 12px; }
 #settings legend { color: var(--muted); padding: 0 4px; }
 #midi-list { list-style: none; margin: 0; padding: 0; }
@@ -131,15 +150,66 @@ header {
 }
 .key span {
     position: absolute; bottom: 6px; left: 0; right: 0; text-align: center;
-    font-size: clamp(8px, 0.8vw, 12px); color: #00000066; pointer-events: none;
+    font-size: clamp(8px, 0.8vw, 12px); color: #0000008c; pointer-events: none;
 }
-.key.black span { color: #ffffff59; bottom: 4px; font-size: clamp(7px, 0.7vw, 11px); }
+.key.black span { color: #ffffffa6; bottom: 4px; font-size: clamp(7px, 0.7vw, 11px); }
 .key span.ctrl { text-decoration: underline; text-underline-offset: 2px; }
+.key span { z-index: 1; }
 .key.on::after {
     content: ""; position: absolute; inset: 0; border-radius: inherit;
     background: var(--c); opacity: var(--a);
 }
+
+/* Glow: a dark stage and shaded keys that light up in the note's color */
+[data-style=glow] #stage { background: radial-gradient(120% 90% at 50% 115%, #1b1430 0%, #08080b 55%, #050507 100%); }
+[data-style=glow] #keys { background: #050507; box-shadow: 0 -1px 0 #ffffff1a; }
+[data-style=glow] #keys::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; z-index: 2;
+    background: linear-gradient(#000000, #00000000); pointer-events: none;
+}
+[data-style=glow] .key.white {
+    background: linear-gradient(#cfcfcb 0%, #fbfbf9 6%, #f3f3f0 86%, #e2e2de 96%, #c9c9c4 100%);
+    border-right: 1px solid #0000004d;
+    box-shadow: inset 2px 0 2px -1px #00000026, inset -2px 0 2px -1px #00000026;
+}
+[data-style=glow] .key.black {
+    background: linear-gradient(#0b0b0c 0%, #222225 80%, #3a3a3e 86%, #141416 100%);
+    box-shadow: 0 2px 3px #00000080;
+}
+[data-style=glow] .key.on::after {
+    opacity: calc(0.55 + 0.4 * var(--a));
+    background: linear-gradient(color-mix(in srgb, var(--c) 60%, white), var(--c) 70%);
+    box-shadow: 0 0 calc(24px * var(--glow, 0.6)) var(--c);
+}
+[data-style=glow] .key.white span { color: #000000a6; }
+
+/* PFA (Piano From Above): a red felt bar and bevelled keys, after Zenith's renderer */
+[data-style=pfa] #stage { background: #000000; }
+[data-style=pfa] #keys { background: #000000; }
+[data-style=pfa] #keys::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 9px; z-index: 2; pointer-events: none;
+    background: linear-gradient(#161616 0, #050505 1px, #4b0503 1px, #950a06 7px, #3d3d3d 7px);
+}
+[data-style=pfa] .key.white {
+    border-radius: 0; border-right: 1px solid #0b0b0b;
+    background: linear-gradient(#cccccc 0%, #ffffff 86%, #878787 86%, #545454 92%, #9d9d9d 92%, #bababa 100%);
+}
+[data-style=pfa] .key.black {
+    border-radius: 0; box-shadow: none;
+    background:
+        linear-gradient(transparent 88%, #4d4d4d 88%),
+        linear-gradient(to right, #333333 12%, #1a1a1a 12%, #1a1a1a 88%, #000000 88%);
+}
+[data-style=pfa] .key.on::after { opacity: 1; background: linear-gradient(color-mix(in srgb, var(--c) 50%, black), var(--c) 30%); }
+[data-style=pfa] .key.black.on::after { background: linear-gradient(to right, var(--c) 12%, color-mix(in srgb, var(--c) 85%, black) 12% 88%, color-mix(in srgb, var(--c) 70%, black) 88%); }
 @media (max-width: 700px) {
     .key span { display: none; }
     .meters .pedal { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+}
+@media (forced-colors: active) {
+    .pedal.on, .key.on::after { forced-color-adjust: none; background: Highlight; color: HighlightText; opacity: 1; }
 }

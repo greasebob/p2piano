@@ -4,6 +4,9 @@ const LOW = 21, HIGH = 108;
 const isBlack = n => [1, 3, 6, 8, 10].includes(n % 12);
 const WHITES = Array.from({ length: HIGH - LOW + 1 }, (_, i) => LOW + i).filter(n => !isBlack(n)).length;
 const RISE_PX_PER_S = 140;
+const GLOW_LIMIT = 250; // notes on screen above which the glow is skipped
+const SPARKS_PER_S = 70; // per held key
+const MAX_SPARKS = 1500;
 
 /** Left edge and width of each key as fractions of the keyboard's width. */
 const BOXES = new Map();
@@ -16,6 +19,100 @@ for (let n = LOW, whites = 0, w = 1 / WHITES; n <= HIGH; n++) {
     }
 }
 
+/** A color for each key, from red at the bottom to violet at the top. */
+const RAINBOW = new Map();
+for (let n = LOW; n <= HIGH; n++) RAINBOW.set(n, hsl(300 * (n - LOW) / (HIGH - LOW), 0.85, 0.6));
+
+function hsl(h, s, l) {
+    const f = k => {
+        const a = s * Math.min(l, 1 - l);
+        const v = l - a * Math.max(-1, Math.min((k + h / 30) % 12 - 3, 9 - (k + h / 30) % 12, 1));
+        return Math.round(v * 255).toString(16).padStart(2, '0');
+    };
+    return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+const toLinear = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+const toSrgb = v => (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055);
+
+/**
+ * A color seen as a light of the given brightness (0 to 1): black at 0, the color itself near
+ * 0.6, and toward white above that as its strongest channels saturate.
+ */
+function light(hex, brightness) {
+    const exposure = 4.2 * brightness * brightness;
+    return '#' + rgb(hex).map(v => {
+        const out = toSrgb(1 - Math.exp(-toLinear(v / 255) * exposure));
+        return Math.round(out * 255).toString(16).padStart(2, '0');
+    }).join('');
+}
+
+const rgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+const rgba = ([r, g, b], a) => `rgba(${r},${g},${b},${a})`;
+const scale = (c, k, add = 0) => c.map(v => Math.min(255, Math.round(v * k + add)));
+
+/** Radial-gradient sprites, cached per kind and color. */
+const sprites = new Map();
+function sprite(kind, color) {
+    const id = `${kind}${color}`;
+    if (sprites.has(id)) return sprites.get(id);
+    const size = 64;
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    const base = rgb(color);
+    const stops = kind === 'spark'
+        ? [[0, '#ffffff'], [0.25, rgba(base, 0.6)], [0.55, rgba(base, 0.15)], [1, rgba(base, 0)]]
+        : [[0, '#ffffff'], [0.1, rgba(scale(base, 1, 80), 0.95)], [0.3, rgba(base, 0.7)], [0.6, rgba(base, 0.3)], [1, rgba(base, 0)]];
+    for (const [at, col] of stops) grad.addColorStop(at, col);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, size, size);
+    sprites.set(id, c);
+    return c;
+}
+
+/** Note bodies for each style. `t` is the trail, `c` its color as [r, g, b]. */
+const NOTES = {
+    pfa(g, t, c, x, y, w, h) {
+        // Piano From Above: a dark border and a fill shaded from left to right
+        g.fillStyle = rgba(scale(c, 0.2), t.alpha);
+        g.fillRect(x - 1, y, w + 2, h);
+        if (w <= 2 || h <= 2) return;
+        const fill = g.createLinearGradient(x, 0, x + w, 0);
+        fill.addColorStop(0, rgba(c, t.alpha));
+        fill.addColorStop(1, rgba(scale(c, 0.5), t.alpha));
+        g.fillStyle = fill;
+        g.fillRect(x, y + 1, w, h - 2);
+    },
+    flat(g, t, c, x, y, w, h) {
+        g.fillStyle = rgba(c, t.alpha);
+        g.beginPath();
+        g.roundRect(x, y, w, h, 3);
+        g.fill();
+    },
+    glow(g, t, c, x, y, w, h, dpr, glow) {
+        const r = Math.min(w * 0.35, 6);
+        if (glow > 0) {
+            g.shadowColor = rgba(c, 0.9);
+            g.shadowBlur = 24 * glow * dpr;
+        }
+        g.fillStyle = rgba(c, t.alpha);
+        g.beginPath();
+        g.roundRect(x, y, w, h, r);
+        g.fill();
+        g.shadowBlur = 0;
+        if (w > 4) {
+            g.fillStyle = `rgba(255,255,255,${0.22 * t.alpha})`;
+            g.beginPath();
+            g.roundRect(x + w * 0.3, y + 1, w * 0.4, Math.max(0, h - 2), r);
+            g.fill();
+        }
+    },
+};
+
+export const STYLES = Object.keys(NOTES);
+
 export class PianoView {
     /**
      * @param {HTMLElement} keysEl
@@ -25,9 +122,18 @@ export class PianoView {
      */
     constructor(keysEl, canvas, labels, onPress) {
         this.canvas = canvas;
+        this.root = keysEl.parentElement;
         this.keys = new Map();
         this.held = new Map(); // note -> [{ who, color, vel }]
         this.trails = [];
+        this.sparks = [];
+        this.emitted = new Map(); // note -> fractional sparks owed
+        this.style = 'glow';
+        this.colors = 'player';
+        this.custom = { white: '#4fa3ff', black: '#ff5fa2' };
+        this.glow = 0.6;
+        this.lights = new Map(); // color -> color at the current brightness
+        this.last = performance.now();
         for (let n = LOW; n <= HIGH; n++) {
             const el = document.createElement('div');
             const box = BOXES.get(n);
@@ -40,6 +146,7 @@ export class PianoView {
             this.keys.set(n, el);
         }
         this.setLabels(labels);
+        this.setStyle(this.style);
         this.bindPointer(keysEl, onPress);
         requestAnimationFrame(() => this.draw());
     }
@@ -50,6 +157,39 @@ export class PianoView {
             el.firstChild.textContent = labels[n]?.text ?? '';
             el.firstChild.classList.toggle('ctrl', !!labels[n]?.ctrl);
         }
+    }
+
+    /** @param {string} style one of STYLES */
+    setStyle(style) {
+        this.style = style in NOTES ? style : 'glow';
+        this.root.dataset.style = this.style;
+        this.sparks = [];
+    }
+
+    /**
+     * Colors notes by player, by key ('rainbow') or by white and black keys ('custom').
+     * @param {string} mode
+     * @param {{white:string, black:string}} custom
+     */
+    setColors(mode, custom) {
+        this.colors = mode;
+        this.custom = custom;
+        for (const [note, list] of this.held) this.paint(note, list[list.length - 1]);
+    }
+
+    /** Sets the brightness of the notes and lit keys, 0 to 1. */
+    setBrightness(v) {
+        this.glow = v;
+        this.lights.clear();
+        this.root.style.setProperty('--glow', String(v));
+        for (const [note, list] of this.held) this.paint(note, list[list.length - 1]);
+    }
+
+    colorOf(note, color) {
+        if (this.colors === 'rainbow') color = RAINBOW.get(note);
+        else if (this.colors === 'custom') color = isBlack(note) ? this.custom.black : this.custom.white;
+        if (!this.lights.has(color)) this.lights.set(color, light(color, this.glow));
+        return this.lights.get(color);
     }
 
     bindPointer(keysEl, onPress) {
@@ -99,10 +239,14 @@ export class PianoView {
             this.trails.push({ who, note, color, alpha: 0.35 + 0.65 * vel / 127, start: now, end: null });
         }
         this.held.set(note, list);
-        const top = list[list.length - 1];
+        this.paint(note, list[list.length - 1]);
+    }
+
+    paint(note, top) {
+        const el = this.keys.get(note);
         el.classList.toggle('on', !!top);
         if (top) {
-            el.style.setProperty('--c', top.color);
+            el.style.setProperty('--c', this.colorOf(note, top.color));
             el.style.setProperty('--a', String(0.45 + 0.55 * top.vel / 127));
         }
     }
@@ -124,19 +268,74 @@ export class PianoView {
         g.setTransform(dpr, 0, 0, dpr, 0, 0);
         g.clearRect(0, 0, w, h);
         const now = performance.now();
+        const dt = Math.min(0.1, (now - this.last) / 1000);
+        this.last = now;
+        const glow = this.style === 'glow';
         this.trails = this.trails.filter(t => t.end === null || (now - t.end) / 1000 * RISE_PX_PER_S < h);
-        for (const t of this.trails) {
+
+        g.globalCompositeOperation = glow ? 'lighter' : 'source-over';
+        const notes = NOTES[this.style];
+        const halo = this.trails.length <= GLOW_LIMIT ? this.glow : 0;
+        // Notes of black keys are drawn over those of white keys.
+        const ordered = [...this.trails.filter(t => !isBlack(t.note)), ...this.trails.filter(t => isBlack(t.note))];
+        for (const t of ordered) {
             const box = BOXES.get(t.note);
             const bottom = h - (t.end === null ? 0 : (now - t.end) / 1000 * RISE_PX_PER_S);
-            const top = h - (now - t.start) / 1000 * RISE_PX_PER_S;
-            g.globalAlpha = t.alpha;
-            g.fillStyle = t.color;
+            const top = Math.max(h - (now - t.start) / 1000 * RISE_PX_PER_S, -4);
             const x = box.x * w + 1, bw = Math.max(2, box.w * w - 2);
-            g.beginPath();
-            g.roundRect(x, Math.max(top, -4), bw, Math.max(2, bottom - Math.max(top, -4)), 3);
-            g.fill();
+            notes(g, t, rgb(this.colorOf(t.note, t.color)), x, top, bw, Math.max(2, bottom - top), dpr, halo);
+        }
+        if (glow && this.glow > 0) this.drawSparks(g, w, h, now, dt);
+        g.globalCompositeOperation = 'source-over';
+        requestAnimationFrame(() => this.draw());
+    }
+
+    /** Sparks and a corona above each held key. */
+    drawSparks(g, w, h, now, dt) {
+        for (const t of this.trails) {
+            const fade = t.end === null ? Math.min(1, (now - t.start) / 150) : 1 - (now - t.end) / 250;
+            if (fade <= 0) continue;
+            const box = BOXES.get(t.note);
+            const r = box.w * w * 1.6;
+            g.globalAlpha = fade * t.alpha * this.glow;
+            g.drawImage(sprite('corona', this.colorOf(t.note, t.color)), (box.x + box.w / 2) * w - r, h - r, 2 * r, 2 * r);
+        }
+        for (const [note, list] of this.held) {
+            if (!list.length) {
+                this.emitted.delete(note);
+                continue;
+            }
+            const box = BOXES.get(note);
+            const top = list[list.length - 1];
+            let owed = (this.emitted.get(note) ?? 0) + SPARKS_PER_S * dt;
+            for (; owed >= 1 && this.sparks.length < MAX_SPARKS; owed--) {
+                const angle = -Math.PI / 2 + (Math.random() - 0.5) * 2.4;
+                const speed = 150 + Math.random() * 180;
+                const life = 0.3 + Math.random() * 0.25;
+                this.sparks.push({
+                    x: (box.x + Math.random() * box.w) * w, y: h,
+                    vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                    age: 0, life, size: 1.5 + Math.random() * 1.5, color: this.colorOf(note, top.color),
+                });
+            }
+            this.emitted.set(note, owed % 1);
+        }
+        this.sparks = this.sparks.filter(s => (s.age += dt) < s.life);
+        for (const s of this.sparks) {
+            s.vx *= 1 - 2 * dt;
+            s.vy *= 1 - 2 * dt;
+            s.x += s.vx * dt;
+            s.y += s.vy * dt;
+            const p = s.age / s.life;
+            const a = (p < 0.1 ? p / 0.1 : 1 - (p - 0.1) / 0.9) ** 2 * this.glow;
+            const tinted = sprite('spark', s.color);
+            for (const [k, alpha] of [[12, 0.2], [6, 0.3]]) {
+                g.globalAlpha = a * alpha;
+                g.drawImage(tinted, s.x - k * s.size / 2, s.y - k * s.size / 2, k * s.size, k * s.size);
+            }
+            g.globalAlpha = a * 0.85;
+            g.drawImage(sprite('spark', '#ffffff'), s.x - 1.25 * s.size, s.y - 1.25 * s.size, 2.5 * s.size, 2.5 * s.size);
         }
         g.globalAlpha = 1;
-        requestAnimationFrame(() => this.draw());
     }
 }

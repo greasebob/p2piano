@@ -5,7 +5,7 @@ import {
 } from 'lucide';
 import { BANKS, loadBank, createPiano, Hand } from './audio.js';
 import { connect, selfId } from './net.js';
-import { PianoView } from './view.js';
+import { PianoView, STYLES } from './view.js';
 import { keyAction, keyLabels, noteLabels, levelVelocity, SUSTAIN_CODE, SOSTENUTO_CODE } from './keys.js';
 
 const ICONS = {
@@ -151,7 +151,9 @@ function changePiano() {
 /** Shifts the computer keyboard's notes by `value` semitones. */
 function setTranspose(value) {
     transpose = Math.max(-MAX_TRANSPOSE, Math.min(MAX_TRANSPOSE, value));
-    $('transpose').textContent = transpose > 0 ? `+${transpose}` : transpose;
+    const text = transpose > 0 ? `+${transpose}` : String(transpose);
+    $('transpose').textContent = text;
+    $('transpose').setAttribute('aria-label', `Transpose ${text}, reset`);
     if ($('labels').value === 'qwerty') view.setLabels(keyLabels(transpose));
 }
 
@@ -211,6 +213,9 @@ function bindKeyboard() {
     const pedals = new Set(); // key codes
     const isText = el => el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type === 'text');
     const isAlt = code => code === 'AltLeft' || code === 'AltRight';
+    // A control reached with Tab keeps the keys that operate it; Escape returns them to the piano.
+    const CONTROL_KEYS = new Set(['Space', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
+    const isTabbed = el => el !== document.body && el.matches?.(':focus-visible');
     const pedalCC = code => (code === SUSTAIN_CODE ? 64 : 66);
     const inverted = code => code === SUSTAIN_CODE && $('sus-invert').checked;
     const pedal = (code, down) => local(0xb0, pedalCC(code), down !== inverted(code) ? 127 : 0);
@@ -226,6 +231,10 @@ function bindKeyboard() {
 
     window.addEventListener('keydown', e => {
         if (isText(e.target)) return;
+        if (isTabbed(e.target)) {
+            if (e.code === 'Escape' && !e.target.closest('[popover]')) e.target.blur();
+            if (CONTROL_KEYS.has(e.code)) return;
+        }
         if (isAlt(e.code)) {
             e.preventDefault(); // keeps the browser menu from taking focus
             return;
@@ -382,6 +391,30 @@ function bindControls() {
         store.set('pr-reverb', $('reverb').value);
         piano?.setReverb(+$('reverb').value);
     });
+    $('brightness').value = store.get('pr-brightness', '60');
+    for (const id of ['volume', 'reverb', 'brightness']) {
+        const show = () => { $(`${id}-val`).value = $(id).value; };
+        $(id).addEventListener('input', show);
+        show();
+    }
+    $('style').value = STYLES.includes(store.get('pr-style', 'glow')) ? store.get('pr-style', 'glow') : 'glow';
+    const savedColors = store.get('pr-colors', 'player');
+    $('colors').value = ['rainbow', 'custom'].includes(savedColors) ? savedColors : 'player';
+    for (const id of ['white-color', 'black-color']) $(id).value = store.get(`pr-${id}`, $(id).value);
+    const showStyle = () => {
+        const mode = $('colors').value;
+        $('custom-colors').hidden = mode !== 'custom';
+        view.setStyle($('style').value);
+        view.setBrightness(+$('brightness').value / 100);
+        view.setColors(mode, { white: $('white-color').value, black: $('black-color').value });
+    };
+    for (const id of ['style', 'colors', 'white-color', 'black-color', 'brightness']) {
+        $(id).addEventListener(id === 'style' || id === 'colors' ? 'change' : 'input', () => {
+            store.set(`pr-${id}`, $(id).value);
+            showStyle();
+        });
+    }
+    showStyle();
     $('labels').addEventListener('change', () => {
         store.set('pr-labels', $('labels').value);
         view.setLabels(labelsFor($('labels').value));
@@ -433,6 +466,7 @@ function setStatus(text, error = false, progress = null) {
     el.hidden = text == null;
     if (text == null) return;
     el.classList.toggle('error', error);
+    el.setAttribute('role', error ? 'alert' : 'status');
     $('loading-text').textContent = progress == null ? text : `${text} ${Math.round(progress * 100)}%`;
     $('loading-bar').style.width = `${(progress ?? 1) * 100}%`;
 }
