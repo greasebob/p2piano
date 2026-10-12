@@ -1,10 +1,13 @@
 import { WorkletSynthesizer } from 'spessasynth_lib';
 import processorUrl from 'spessasynth_lib/dist/spessasynth_processor.min.js?url';
 
-// Pianos by velocity layer count. `strikes` has one velocity per layer, used to preload samples.
+// Selectable pianos. `strikes` has one velocity per sample layer, used to preload samples.
+const SOUNDFONTS = `${import.meta.env.BASE_URL}soundfonts`;
 export const BANKS = {
-    8: { url: `${import.meta.env.BASE_URL}soundfonts/salamander-grand-v1.sf3`, strikes: [20, 40, 50, 64, 80, 96, 112, 125] },
-    16: { url: `${import.meta.env.BASE_URL}soundfonts/salamander-grand-16-v1.sf3`, strikes: [13, 30, 35, 40, 45, 48, 53, 60, 68, 76, 84, 92, 100, 108, 116, 124] },
+    'salamander-8': { url: `${SOUNDFONTS}/salamander-grand-v1.sf3`, strikes: [20, 40, 50, 64, 80, 96, 112, 125] },
+    'salamander-16': { url: `${SOUNDFONTS}/salamander-grand-16-v1.sf3`, strikes: [13, 30, 35, 40, 45, 48, 53, 60, 68, 76, 84, 92, 100, 108, 116, 124] },
+    'amethyst-studio': { url: `${SOUNDFONTS}/amethyst-studio-v1.sf3`, strikes: [100] },
+    'amethyst-hall': { url: `${SOUNDFONTS}/amethyst-hall-v1.sf3`, strikes: [100] },
 };
 const CACHE = 'piano-room-banks-v1';
 const PRELOAD_CHANNEL = 15;
@@ -84,8 +87,8 @@ async function preload(synth, strikes, onProgress) {
     synth.controllerChange(PRELOAD_CHANNEL, 7, 0);
     synth.controllerChange(PRELOAD_CHANNEL, 11, 0);
     for (let i = 0; i < strikes.length; i++) {
-        for (let note = 21; note <= 108; note += 3) synth.noteOn(PRELOAD_CHANNEL, note, strikes[i]);
-        for (let note = 21; note <= 108; note += 3) synth.noteOff(PRELOAD_CHANNEL, note);
+        for (let note = 21; note <= 108; note++) synth.noteOn(PRELOAD_CHANNEL, note, strikes[i]);
+        for (let note = 21; note <= 108; note++) synth.noteOff(PRELOAD_CHANNEL, note);
         await synth.getSnapshot(); // resolves after the worklet has processed the notes above
         onProgress((i + 1) / strikes.length);
     }

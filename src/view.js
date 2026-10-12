@@ -20,7 +20,7 @@ export class PianoView {
     /**
      * @param {HTMLElement} keysEl
      * @param {HTMLCanvasElement} canvas
-     * @param {Record<number,string>} labels
+     * @param {Record<number,{text:string, ctrl?:boolean}>} labels
      * @param {(note:number, vel:number)=>void} onPress  vel 0 releases
      */
     constructor(keysEl, canvas, labels, onPress) {
@@ -44,9 +44,12 @@ export class PianoView {
         requestAnimationFrame(() => this.draw());
     }
 
-    /** @param {Record<number,string>} labels */
+    /** @param {Record<number,{text:string, ctrl?:boolean}>} labels */
     setLabels(labels) {
-        for (const [n, el] of this.keys) el.firstChild.textContent = labels[n] ?? '';
+        for (const [n, el] of this.keys) {
+            el.firstChild.textContent = labels[n]?.text ?? '';
+            el.firstChild.classList.toggle('ctrl', !!labels[n]?.ctrl);
+        }
     }
 
     bindPointer(keysEl, onPress) {

@@ -1,15 +1,22 @@
 import './style.css';
-import { createIcons, Link, Check, Maximize, Minimize, Settings, Piano, LogIn, Plus, Keyboard } from 'lucide';
+import {
+    createIcons, Link, Check, Maximize, Minimize, Settings, Piano, LogIn, Plus, Keyboard,
+    ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+} from 'lucide';
 import { BANKS, loadBank, createPiano, Hand } from './audio.js';
 import { connect, selfId } from './net.js';
 import { PianoView } from './view.js';
 import { keyAction, keyLabels, noteLabels, levelVelocity, SUSTAIN_CODE, SOSTENUTO_CODE } from './keys.js';
 
-const ICONS = { Link, Check, Maximize, Minimize, Settings, Piano, LogIn, Plus, Keyboard };
+const ICONS = {
+    Link, Check, Maximize, Minimize, Settings, Piano, LogIn, Plus, Keyboard,
+    ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+};
 const COLORS = ['#f2b84b', '#5ec7e8', '#ef6f8e', '#8bd17c', '#b28cf2', '#f58d4e', '#4fd1b5', '#e8e15e'];
 const PEER_CHANNELS = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]; // 0 is ours, 9 is drums, 15 preloads
 const ROOM_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789';
-const LABELS = { qwerty: keyLabels(), notes: noteLabels() };
+const MAX_TRANSPOSE = 24;
+const TRANSPOSE_KEYS = { ArrowLeft: -1, ArrowRight: 1, ArrowDown: -12, ArrowUp: 12 };
 
 const $ = id => document.getElementById(id);
 const icons = () => createIcons({ icons: ICONS });
@@ -26,9 +33,11 @@ store.set('pr-color', me.color);
 let ctx, net, view;
 let piano = null;
 let myHand = null;
-let loadedLayers = null;
+let loadedPiano = null;
+let transpose = 0;
 let bankJob = Promise.resolve();
 let keyboardVelocity = 100;
+let sustain = 0; // this player's last sustain value
 const peers = new Map(); // id -> { id, info, hand, ping }
 
 // Start screen
@@ -61,12 +70,13 @@ function enter() {
 
     ctx = new AudioContext({ latencyHint: 'interactive' });
     $('labels').value = store.get('pr-labels', 'qwerty') === 'notes' ? 'notes' : 'qwerty';
-    view = new PianoView($('keys'), $('rise'), LABELS[$('labels').value], (note, vel) => local(vel ? 0x90 : 0x80, note, vel));
+    view = new PianoView($('keys'), $('rise'), labelsFor($('labels').value), (note, vel) => local(vel ? 0x90 : 0x80, note, vel));
     net = connect(roomId, me, {
         onPeer(id, info) {
             const p = peer(id);
             p.info = { name: String(info?.name ?? 'Player').slice(0, 24), color: freeColor(id, info?.color) };
             renderPeople();
+            if (sustain) net.send(0xb0, 64, sustain); // a held or inverted pedal, for someone who just joined
         },
         onLeave(id) {
             const p = peers.get(id);
@@ -101,40 +111,52 @@ function enter() {
 }
 
 async function start() {
-    const layers = $('layers').value;
-    piano = await createPiano(ctx, await fetchBank(layers), BANKS[layers].strikes, preloadProgress);
-    loadedLayers = layers;
+    const id = $('piano').value;
+    piano = await createPiano(ctx, await fetchBank(id), BANKS[id].strikes, preloadProgress);
+    loadedPiano = id;
     piano.setVolume(+$('volume').value / 100);
     piano.setReverb(+$('reverb').value);
     myHand = new Hand(piano.synth, 0, (note, vel) => view.key(selfId, note, vel, me.color));
+    if (sustain) myHand.midi(0xb0, 64, sustain, 0);
     for (const p of peers.values()) attachHand(p);
     setStatus(null);
-    changeLayers(); // applies a change made while loading
+    changePiano(); // applies a change made while loading
     if (ctx.state !== 'running') await ctx.resume();
 }
 
-function fetchBank(layers) {
+function fetchBank(id) {
     setStatus('Piano', false, 0);
-    return loadBank(BANKS[layers].url, f => setStatus('Piano', false, f * 0.8));
+    return loadBank(BANKS[id].url, f => setStatus('Piano', false, f * 0.8));
 }
 
 function preloadProgress(f) {
     setStatus('Piano', false, 0.8 + f * 0.2);
 }
 
-/** Switches to the selected layer count. Switches run one at a time. */
-function changeLayers() {
+/** Switches to the selected piano. Switches run one at a time. */
+function changePiano() {
     bankJob = bankJob.then(async () => {
-        const layers = $('layers').value;
-        if (!piano || layers === loadedLayers) return;
-        const bank = await fetchBank(layers);
-        if ($('layers').value === layers) {
-            await piano.setBank(bank, BANKS[layers].strikes, preloadProgress);
-            loadedLayers = layers;
+        const id = $('piano').value;
+        if (!piano || id === loadedPiano) return;
+        const bank = await fetchBank(id);
+        if ($('piano').value === id) {
+            await piano.setBank(bank, BANKS[id].strikes, preloadProgress);
+            loadedPiano = id;
         }
         setStatus(null);
-        changeLayers(); // applies a change made while loading
+        changePiano(); // applies a change made while loading
     }).catch(showError);
+}
+
+/** Shifts the computer keyboard's notes by `value` semitones. */
+function setTranspose(value) {
+    transpose = Math.max(-MAX_TRANSPOSE, Math.min(MAX_TRANSPOSE, value));
+    $('transpose').textContent = transpose > 0 ? `+${transpose}` : transpose;
+    if ($('labels').value === 'qwerty') view.setLabels(keyLabels(transpose));
+}
+
+function labelsFor(mode) {
+    return mode === 'notes' ? noteLabels() : keyLabels(transpose);
 }
 
 function peer(id) {
@@ -176,6 +198,7 @@ function local(status, a, b) {
     else if (status !== 0xb0) view.key(selfId, a, status === 0x90 ? b : 0, me.color);
     if (status === 0x90 && b > 0) $('vel-last').textContent = b;
     if (status === 0xb0) {
+        if (a === 64) sustain = b;
         const chip = { 64: 'ped-sus', 66: 'ped-sos', 67: 'ped-soft' }[a];
         if (chip) $(chip).classList.toggle('on', a === 64 ? b > 0 : b >= 64);
     }
@@ -189,7 +212,17 @@ function bindKeyboard() {
     const isText = el => el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type === 'text');
     const isAlt = code => code === 'AltLeft' || code === 'AltRight';
     const pedalCC = code => (code === SUSTAIN_CODE ? 64 : 66);
+    const inverted = code => code === SUSTAIN_CODE && $('sus-invert').checked;
+    const pedal = (code, down) => local(0xb0, pedalCC(code), down !== inverted(code) ? 127 : 0);
     $('vel-key').textContent = keyboardVelocity;
+
+    // Inverted sustain holds the pedal down while Space is up.
+    $('sus-invert').checked = store.get('pr-sus-invert', '0') === '1';
+    $('sus-invert').addEventListener('change', () => {
+        store.set('pr-sus-invert', $('sus-invert').checked ? '1' : '0');
+        pedal(SUSTAIN_CODE, pedals.has(SUSTAIN_CODE));
+    });
+    if ($('sus-invert').checked) pedal(SUSTAIN_CODE, false);
 
     window.addEventListener('keydown', e => {
         if (isText(e.target)) return;
@@ -201,8 +234,13 @@ function bindKeyboard() {
             e.preventDefault();
             if (!pedals.has(e.code)) {
                 pedals.add(e.code);
-                local(0xb0, pedalCC(e.code), 127);
+                pedal(e.code, true);
             }
+            return;
+        }
+        if (e.code in TRANSPOSE_KEYS && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            e.preventDefault();
+            setTranspose(transpose + TRANSPOSE_KEYS[e.code]);
             return;
         }
         const action = keyAction(e);
@@ -216,15 +254,17 @@ function bindKeyboard() {
             $('vel-key').textContent = keyboardVelocity;
             return;
         }
+        const note = action.note + transpose;
+        if (note < 21 || note > 108) return;
         const notes = held.get(e.code) ?? [];
-        if (notes.includes(action.note)) {
+        if (notes.includes(note)) {
             if (e.repeat) return;
-            local(0x80, action.note, 0); // pressed again without a release: restrike
+            local(0x80, note, 0); // pressed again without a release: restrike
         } else {
-            notes.push(action.note);
+            notes.push(note);
         }
         held.set(e.code, notes);
-        local(0x90, action.note, keyboardVelocity);
+        local(0x90, note, keyboardVelocity);
     });
 
     window.addEventListener('keyup', e => {
@@ -233,7 +273,8 @@ function bindKeyboard() {
             return;
         }
         if (pedals.delete(e.code)) {
-            local(0xb0, pedalCC(e.code), 0);
+            e.preventDefault();
+            pedal(e.code, false);
             return;
         }
         const notes = held.get(e.code);
@@ -246,7 +287,7 @@ function bindKeyboard() {
     window.addEventListener('blur', () => {
         for (const notes of held.values()) for (const n of notes) local(0x80, n, 0);
         held.clear();
-        for (const code of pedals) local(0xb0, pedalCC(code), 0);
+        for (const code of pedals) pedal(code, false);
         pedals.clear();
     });
 }
@@ -293,6 +334,10 @@ function bindMidi() {
 // Header and settings
 
 function bindControls() {
+    // A clicked button gives focus back, so Space and Enter do not press it again while playing.
+    document.addEventListener('click', e => {
+        if (e.detail > 0 && e.target.closest('button')) e.target.closest('button').blur();
+    });
     $('invite').addEventListener('click', async () => {
         try {
             await navigator.clipboard.writeText(location.href);
@@ -339,12 +384,18 @@ function bindControls() {
     });
     $('labels').addEventListener('change', () => {
         store.set('pr-labels', $('labels').value);
-        view.setLabels(LABELS[$('labels').value]);
+        view.setLabels(labelsFor($('labels').value));
     });
-    $('layers').value = store.get('pr-layers', '8') === '16' ? '16' : '8';
-    $('layers').addEventListener('change', () => {
-        store.set('pr-layers', $('layers').value);
-        changeLayers();
+    for (const button of document.querySelectorAll('[data-transpose]')) {
+        button.addEventListener('click', () => setTranspose(transpose + Number(button.dataset.transpose)));
+    }
+    $('transpose').addEventListener('click', () => setTranspose(0));
+
+    const savedPiano = store.get('pr-piano', 'salamander-8');
+    $('piano').value = savedPiano in BANKS ? savedPiano : 'salamander-8';
+    $('piano').addEventListener('change', () => {
+        store.set('pr-piano', $('piano').value);
+        changePiano();
     });
 
     // Browsers may keep audio suspended until the user interacts with the page.

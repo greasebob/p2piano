@@ -54,18 +54,27 @@ export function noteLabels() {
     const labels = {};
     for (let n = 21; n <= 108; n++) {
         const name = NOTE_NAMES[n % 12];
-        labels[n] = name === 'C' ? `C${Math.floor(n / 12) - 1}` : name;
+        labels[n] = { text: name === 'C' ? `C${Math.floor(n / 12) - 1}` : name };
     }
     return labels;
 }
 
-/** Returns the key label for each note, as written in sheets. */
-export function keyLabels() {
+/**
+ * Returns the key that plays each note, as written in sheets, with the notes shifted by
+ * `transpose` semitones. Keys played with Ctrl are marked `ctrl`.
+ */
+export function keyLabels(transpose = 0) {
     const labels = {};
+    const put = (note, text, ctrl = false) => {
+        const n = note + transpose;
+        if (n >= 21 && n <= 108) labels[n] = { text, ctrl };
+    };
     [...WHITE_CHARS].forEach((c, i) => {
         const note = 36 + 12 * Math.floor(i / 7) + WHITE_STEPS[i % 7];
-        labels[note] = c;
-        if (HAS_SHARP[i % 7] && note < 96) labels[note + 1] = SHIFTED_DIGITS[c] ?? c.toUpperCase();
+        put(note, c);
+        if (HAS_SHARP[i % 7] && note < 96) put(note + 1, SHIFTED_DIGITS[c] ?? c.toUpperCase());
     });
+    [...LOW_CHARS].forEach((c, i) => put(21 + i, c, true));
+    [...HIGH_CHARS].forEach((c, i) => put(97 + i, c, true));
     return labels;
 }
