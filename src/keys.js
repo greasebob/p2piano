@@ -1,0 +1,57 @@
+// The computer keyboard follows the Roblox piano's key protocol, the same keys QuartzMIDI sends:
+// 61 keys from C2 on the white-key row with Shift for sharps, Ctrl for the rest of the 88 keys,
+// Alt plus a key for one of 32 velocity levels, Space for sustain and ] for sostenuto.
+
+const WHITE_CHARS = '1234567890qwertyuiopasdfghjklzxcvbnm';
+const LOW_CHARS = '1234567890qwert'; // Ctrl: A0 to B1
+const HIGH_CHARS = 'yuiopasdfghj'; // Ctrl: C#7 to C8
+const VELOCITY_CHARS = '1234567890qwertyuiopasdfghjklzxc';
+const WHITE_STEPS = [0, 2, 4, 5, 7, 9, 11];
+const HAS_SHARP = [true, true, false, true, true, true, false];
+
+const codeOf = c => (c >= '0' && c <= '9' ? 'Digit' : 'Key') + c.toUpperCase();
+const indexBy = chars => Object.fromEntries([...chars].map((c, i) => [codeOf(c), i]));
+const WHITE = indexBy(WHITE_CHARS);
+const LOW = indexBy(LOW_CHARS);
+const HIGH = indexBy(HIGH_CHARS);
+const VELOCITY = indexBy(VELOCITY_CHARS);
+
+export const SUSTAIN_CODE = 'Space';
+export const SOSTENUTO_CODE = 'BracketRight';
+
+/** Level 0-31 to the velocity the game plays it at. */
+export const levelVelocity = level => Math.min(127, (level + 1) * 4);
+
+/**
+ * What a keydown means: {note}, {level} or null.
+ * @param {KeyboardEvent} e
+ */
+export function keyAction(e) {
+    const code = e.code;
+    if (e.altKey && !e.ctrlKey) {
+        return code in VELOCITY ? { level: VELOCITY[code] } : null;
+    }
+    if (e.ctrlKey && !e.altKey) {
+        if (code in LOW) return { note: 21 + LOW[code] };
+        if (code in HIGH) return { note: 97 + HIGH[code] };
+        return null;
+    }
+    if (e.ctrlKey || !(code in WHITE)) return null;
+    const i = WHITE[code];
+    const note = 36 + 12 * Math.floor(i / 7) + WHITE_STEPS[i % 7];
+    if (!e.shiftKey) return { note };
+    return HAS_SHARP[i % 7] && note < 96 ? { note: note + 1 } : null;
+}
+
+const SHIFTED_DIGITS = { 1: '!', 2: '@', 4: '$', 5: '%', 6: '^', 8: '*', 9: '(' };
+
+/** Each note's key as the game's sheets write it. */
+export function keyLabels() {
+    const labels = {};
+    [...WHITE_CHARS].forEach((c, i) => {
+        const note = 36 + 12 * Math.floor(i / 7) + WHITE_STEPS[i % 7];
+        labels[note] = c;
+        if (HAS_SHARP[i % 7] && note < 96) labels[note + 1] = SHIFTED_DIGITS[c] ?? c.toUpperCase();
+    });
+    return labels;
+}

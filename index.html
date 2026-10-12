@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Piano Room</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f2b84b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M18.5 8c-1.4 0-2.6-.8-3.2-2A6.87 6.87 0 0 0 2 9v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-8.5C22 9.6 20.4 8 18.5 8'/><path d='M2 14h20'/><path d='M6 14v4'/><path d='M10 14v4'/><path d='M14 14v4'/><path d='M18 14v4'/></svg>">
+    <script type="module" src="/src/main.js"></script>
+</head>
+<body>
+<main id="start">
+    <form id="start-form">
+        <h1><i data-lucide="piano"></i>Piano Room</h1>
+        <input id="name" placeholder="Name" maxlength="24" autocomplete="nickname">
+        <button id="go" type="submit" class="primary"></button>
+    </form>
+</main>
+
+<div id="room" hidden>
+    <header>
+        <button id="invite" type="button"><i data-lucide="link"></i><span>Invite</span></button>
+        <span id="room-name"></span>
+        <ul id="people"></ul>
+        <div id="loading" hidden><span id="loading-text"></span><div class="bar"><div id="loading-bar"></div></div></div>
+        <div class="meters">
+            <span class="meter">Velocity <b id="vel-last">–</b></span>
+            <span class="meter" aria-label="Keyboard velocity"><i data-lucide="keyboard"></i><b id="vel-key"></b></span>
+            <span id="ped-sus" class="pedal">Sustain</span>
+            <span id="ped-sos" class="pedal">Sostenuto</span>
+            <span id="ped-soft" class="pedal">Soft</span>
+        </div>
+        <button type="button" class="icon" popovertarget="settings" aria-label="Settings"><i data-lucide="settings"></i></button>
+        <button id="fullscreen" type="button" class="icon" aria-label="Full screen"><i data-lucide="maximize"></i></button>
+    </header>
+
+    <div id="settings" popover>
+        <label>Name <input id="my-name" maxlength="24"></label>
+        <label>Volume <input id="volume" type="range" min="0" max="100"></label>
+        <label>Reverb <input id="reverb" type="range" min="0" max="127"></label>
+        <fieldset>
+            <legend>MIDI inputs</legend>
+            <ul id="midi-list"></ul>
+            <p id="midi-none" hidden>None</p>
+        </fieldset>
+        <p class="credit">Salamander Grand Piano by Alexander Holm, <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>; SF2 by <a href="https://freepats.zenvoid.org/" target="_blank" rel="noopener">FreePats</a>.</p>
+    </div>
+
+    <section id="stage"><canvas id="rise"></canvas></section>
+    <div id="keys"></div>
+</div>
+</body>
+</html>
