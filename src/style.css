@@ -162,7 +162,7 @@ header { grid-area: head; }
 #map { grid-area: map; }
 #keys { grid-area: keys; }
 #cursors { position: absolute; inset: 0; z-index: 30; overflow: hidden; pointer-events: none; }
-.cursor { position: absolute; transition: left .08s linear, top .08s linear, opacity .4s; }
+.cursor { position: absolute; transition: opacity .4s; }
 .cursor.idle { opacity: 0; }
 .cursor svg {
     display: block; width: 20px; height: 20px; margin: -3px 0 0 -3px;

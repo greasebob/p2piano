@@ -116,9 +116,11 @@ A chat message to everyone, at most 300 characters; a receiver trims it and drop
 
 ### `cur`
 
-`[x, y]` or `null`
+`[x, y, t]` or `null`
 
-Where the player's pointer is, as fractions 0-1 of the room's width and height, sent at most every 50 ms while it moves; `null` once it leaves the room or the window.
+Where the player's pointer is, as fractions 0-1 of the room's width and height, sent at most every 15 ms while it moves; `null` once it leaves the room or the window.
+`t` is when the pointer got there, on the clock `play` uses, and the receiver shows the move as late as it plays a note from that moment (see Timing), so a drag along the keys stays with its notes.
+A receiver still shows `[x, y]` without `t` at once.
 The receiver shows it in the player's colour with their name, and fades it after 6 s without a move.
 
 ### `play`

@@ -43,7 +43,7 @@ async function passProof(roomId, nonce, password) {
  * Joins a room. `ident` is this browser's identity, `since` when this player entered the room.
  * handlers:
  *   onPeer(id, info), onLeave(id), onMidi(id, status, a, b, holdMs), onPing(id, ms), onChat(id, text),
- *   onRoom(id, state), onMod(id, msg), onCert(id, cert), onCursor(id, [x, y] or null),
+ *   onRoom(id, state), onMod(id, msg), onCert(id, cert), onCursor(id, [x, y] or null, holdMs),
  *   chain() the ownership chain to hand on, offerChain(chain) one a peer handed on,
  *   att() this player's account attestation or null, accountOf(att, key) the account ids a peer's proves or null,
  *   refuse(id, them) 'ban', 'kick' or null for a peer about to join,
@@ -117,9 +117,19 @@ export function connect(roomId, me, ident, since, handlers) {
     state.onMessage = from((data, peerId) => handlers.onRoom(peerId, data));
     mod.onMessage = from((data, peerId) => handlers.onMod(peerId, data));
     cert.onMessage = from((data, peerId) => handlers.onCert(peerId, data));
-    cur.onMessage = from((pos, peerId) => {
-        if (pos === null) handlers.onCursor(peerId, null);
-        else if (Array.isArray(pos) && pos.length === 2 && pos.every(v => typeof v === 'number' && v >= 0 && v <= 1)) handlers.onCursor(peerId, pos);
+    // A pointer is shown as late as the notes are, so a drag along the keys stays under its notes
+    cur.onMessage = from((msg, peerId) => {
+        const p = peer(peerId);
+        const now = performance.now();
+        let at = now;
+        if (Array.isArray(msg) && msg.length >= 3 && typeof msg[2] === 'number' && p.lateness.length) {
+            const sorted = [...p.lateness].sort((x, y) => x - y);
+            at = now + Math.min(MAX_HOLD_MS, Math.max(0, sorted[Math.floor(sorted.length * 0.9)] - (now - msg[2])));
+        }
+        at = Math.max(at, p.curAt ?? 0); // never ahead of a move made before it
+        p.curAt = at;
+        if (msg === null) handlers.onCursor(peerId, null, at - now);
+        else if (Array.isArray(msg) && (msg.length === 2 || msg.length === 3) && msg.slice(0, 2).every(v => typeof v === 'number' && v >= 0 && v <= 1)) handlers.onCursor(peerId, msg.slice(0, 2), at - now);
     });
 
     // Clocks differ by an unknown offset, so each note is played at its send time plus the 90th
@@ -215,9 +225,12 @@ export function connect(roomId, me, ident, since, handlers) {
             if (target) cert.send(data, { target });
             else everyone(cert, data);
         },
-        /** Sends where this player's pointer is, as fractions of the room, or null once it has left. */
-        cursor(pos) {
-            everyone(cur, pos);
+        /**
+         * Sends where this player's pointer is, as fractions of the room, with when it got there on
+         * the clock the notes use, or null once it has left.
+         */
+        cursor(pos, t) {
+            everyone(cur, pos && [pos[0], pos[1], Math.round(t * 10) / 10]);
         },
         /** Stops talking to a peer; it is refused if it connects again. */
         block(id) {

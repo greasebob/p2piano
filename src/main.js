@@ -225,9 +225,13 @@ function join() {
             const p = peer(id);
             if (!muteOf(p).chat) addMessage(p.info, text);
         },
-        onCursor(id, pos) {
-            const p = peers.get(id);
-            if (p) showCursor(p, muteOf(p).play ? null : pos);
+        onCursor(id, pos, holdMs) {
+            const show = () => {
+                const p = peers.get(id);
+                if (p) showCursor(p, muteOf(p).play ? null : pos);
+            };
+            if (holdMs > 0) setTimeout(show, holdMs);
+            else show();
         },
         state: () => ({ chain: room.chain ?? null, bans: bans(), names: names() }),
         chain: () => room.chain ?? null,
@@ -1035,11 +1039,12 @@ function bindViaCard() {
 
 // Everyone's pointer shows to the others as an arrow in their colour with their name, placed by
 // fractions of the room so it points at about the same spot on another screen size.
-const CURSOR_MS = 50; // at most this often
+const CURSOR_MS = 15; // at most about once a frame
 const CURSOR_PATH = 'M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z';
 
 function bindCursors() {
     let pending = null;
+    let pendingAt = 0;
     let sent = 'null';
     let last = 0;
     let timer = 0;
@@ -1048,10 +1053,12 @@ function bindCursors() {
         last = performance.now();
         if (JSON.stringify(pending) === sent) return;
         sent = JSON.stringify(pending);
-        net?.cursor(pending);
+        net?.cursor(pending, pendingAt);
     };
-    const send = pos => {
+    // `at` is when the pointer got there, so the others show it in step with the notes it plays
+    const send = (pos, at = performance.now()) => {
         pending = pos;
+        pendingAt = at;
         const wait = last + CURSOR_MS - performance.now();
         if (wait <= 0) flush();
         else timer ||= setTimeout(flush, wait);
@@ -1062,7 +1069,7 @@ function bindCursors() {
         const r = $('room').getBoundingClientRect();
         const x = (e.clientX - r.left) / r.width;
         const y = (e.clientY - r.top) / r.height;
-        send(x >= 0 && x <= 1 && y >= 0 && y <= 1 ? [frac(x), frac(y)] : null);
+        send(x >= 0 && x <= 1 && y >= 0 && y <= 1 ? [frac(x), frac(y)] : null, e.timeStamp);
     }, true);
     document.documentElement.addEventListener('pointerleave', () => send(null));
     window.addEventListener('blur', () => send(null));
