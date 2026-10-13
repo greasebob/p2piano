@@ -6,6 +6,7 @@
 //   PUBLIC_URL      this worker's own address, for the sign-in redirects
 //   RETURNS         the page addresses a sign-in may return to, comma separated
 //   DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, ROBLOX_CLIENT_ID, ROBLOX_CLIENT_SECRET
+//   ROBLOX_REDIRECT optional: a page that forwards to /callback/roblox, as Roblox refuses workers.dev
 //   ATTEST_KEY      the ECDSA P-256 private key (JWK) attestations are signed with
 //   IP_SALT         the secret addresses are hashed with; addresses themselves are never stored
 //   FAKE_LOGIN      '1' only for local tests: a 'fake' provider that signs in whoever is named
@@ -125,7 +126,8 @@ function provider(env, name) {
     const p = PROVIDERS[name];
     const id = env[`${name?.toUpperCase()}_CLIENT_ID`];
     if (!p || !id) throw new HttpError(404, 'no such sign-in');
-    return { ...p, id, secret: env[`${name.toUpperCase()}_CLIENT_SECRET`] };
+    const redirect = env[`${name.toUpperCase()}_REDIRECT`] || `${env.PUBLIC_URL}/callback/${name}`;
+    return { ...p, id, redirect, secret: env[`${name.toUpperCase()}_CLIENT_SECRET`] };
 }
 
 // Signing in
@@ -154,7 +156,7 @@ async function login(env, url, name) {
     }
     const to = new URL(p.authorize);
     to.searchParams.set('client_id', p.id);
-    to.searchParams.set('redirect_uri', `${env.PUBLIC_URL}/callback/${name}`);
+    to.searchParams.set('redirect_uri', p.redirect);
     to.searchParams.set('response_type', 'code');
     to.searchParams.set('scope', p.scope);
     to.searchParams.set('state', state);
@@ -189,7 +191,7 @@ async function callback(request, env, url, name) {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({
-                grant_type: 'authorization_code', code, redirect_uri: `${env.PUBLIC_URL}/callback/${name}`,
+                grant_type: 'authorization_code', code, redirect_uri: p.redirect,
                 client_id: p.id, client_secret: p.secret, code_verifier: row.verifier,
             }),
         });

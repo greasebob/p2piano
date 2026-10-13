@@ -4,12 +4,13 @@ main = "src/index.js"
 compatibility_date = "2026-09-01"
 
 [vars]
-PUBLIC_URL = "https://p2piano-accounts.greasebob.workers.dev"
+PUBLIC_URL = "https://p2piano-accounts.p2piano-accounts.workers.dev"
 RETURNS = "https://greasebob.github.io/p2piano/,http://localhost:5179/"
-DISCORD_CLIENT_ID = ""
-ROBLOX_CLIENT_ID = ""
+DISCORD_CLIENT_ID = "1559605934236369056"
+ROBLOX_CLIENT_ID = "6369692211543884356"
+ROBLOX_REDIRECT = "https://greasebob.github.io/p2piano/roblox/"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "p2piano"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "e055cbec-7846-424b-b48f-182d2b0515ce"
