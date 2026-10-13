@@ -173,6 +173,7 @@ async function enter() {
     bindMidi();
     bindControls();
     bindPlayerMenu();
+    bindViaCard();
     bindRoomSettings();
     $('settings').addEventListener('toggle', e => {
         if (e.newState === 'open' && accounts.signedIn) accounts.refresh().catch(() => {}).then(() => renderAccount($('account')));
@@ -992,25 +993,51 @@ const PROFILES = {
     roblox: id => `https://www.roblox.com/users/${id}/profile`,
 };
 
-/** A signed-in player's logins as logos; a click opens that profile. The row is a button, so these are not links. */
-function profiles(via) {
-    const box = document.createElement('span');
-    box.className = 'via';
-    for (const l of via ?? []) {
-        if (!PROFILES[l.p]) continue;
-        const logo = brand(l.p);
-        logo.setAttribute('role', 'link');
-        logo.dataset.href = PROFILES[l.p](l.id);
-        const title = document.createElementNS(SVG, 'title');
-        title.textContent = l.n ? `${PROVIDER_NAMES[l.p]}: ${l.n}` : PROVIDER_NAMES[l.p];
-        logo.prepend(title);
-        logo.addEventListener('click', e => {
-            e.stopPropagation();
-            open(logo.dataset.href, '_blank', 'noopener,noreferrer');
-        });
-        box.append(logo);
-    }
-    return box;
+// A signed-in player's logins show in a card under their row while it is hovered; each opens that profile.
+// Rows are rebuilt on every change, so the card follows the pointer rather than a row's own events.
+let viaCard = null;
+let viaFor = null;
+let viaTimer = 0;
+
+function bindViaCard() {
+    viaCard = document.createElement('div');
+    viaCard.id = 'via-card';
+    viaCard.hidden = true;
+    document.body.append(viaCard);
+    const hide = () => {
+        viaFor = null;
+        viaCard.hidden = true;
+    };
+    document.addEventListener('pointermove', e => {
+        const row = e.target.closest?.('#people .person[data-via]');
+        if (row || e.target.closest?.('#via-card')) {
+            clearTimeout(viaTimer);
+            if (row && row.dataset.via !== viaFor) showVia(row);
+        } else if (!viaCard.hidden && !viaTimer) {
+            viaTimer = setTimeout(() => { viaTimer = 0; hide(); }, 200);
+        }
+    });
+    $('people').addEventListener('scroll', hide);
+    viaCard.addEventListener('click', hide);
+}
+
+function showVia(row) {
+    clearTimeout(viaTimer);
+    viaTimer = 0;
+    viaFor = row.dataset.via;
+    viaCard.replaceChildren(...JSON.parse(viaFor).map(l => {
+        const a = document.createElement('a');
+        a.href = PROFILES[l.p](l.id);
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.append(brand(l.p), l.n || PROVIDER_NAMES[l.p]);
+        return a;
+    }));
+    viaCard.hidden = false;
+    const r = row.getBoundingClientRect();
+    const h = viaCard.offsetHeight;
+    viaCard.style.left = `${Math.max(4, Math.min(r.left + 10, innerWidth - viaCard.offsetWidth - 4))}px`;
+    viaCard.style.top = `${r.bottom + 2 + h > innerHeight ? r.top - h - 2 : r.bottom + 2}px`;
 }
 
 function renderPeople() {
@@ -1033,7 +1060,9 @@ function renderPeople() {
         const name = document.createElement('span');
         name.className = 'name';
         name.textContent = info.name;
-        body.append(name, profiles(p ? p.ident?.via : accounts.att?.via));
+        body.append(name);
+        const via = (p ? p.ident?.via : accounts.att?.via)?.filter(l => PROFILES[l.p]) ?? [];
+        if (via.length) body.dataset.via = JSON.stringify(via);
         for (const t of info.tags ?? []) body.append(tagPill(t));
         if (info.sf) {
             const sf = icon(Piano, 'piano', info.sf);

@@ -194,11 +194,19 @@ header {
     color: inherit; font: inherit; text-align: left;
 }
 #people button.person:hover { background: var(--hover); }
-#people .person .name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#people .person .via { display: flex; gap: 4px; margin-right: auto; }
-#people .person .via svg.brand { cursor: pointer; color: var(--muted); }
-#people .person .via svg.brand:hover { color: var(--text); }
-#people .person .via svg.brand-discord:hover { color: #5865f2; }
+#people .person .name { flex: 0 1 auto; min-width: 0; margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#via-card {
+    position: fixed; z-index: 50; display: grid; gap: 2px; padding: 4px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow);
+    font-size: 13px; font-weight: 600;
+}
+#via-card[hidden] { display: none; }
+#via-card a {
+    display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px;
+    color: var(--text); text-decoration: none; white-space: nowrap;
+}
+#via-card a:hover { background: var(--hover); }
+#via-card .brand { width: 16px; height: 16px; }
 #people .person svg { width: 14px; height: 14px; flex: none; color: var(--muted); }
 #people .person svg.lucide-crown { color: var(--accent); }
 #people li.self .person { background: color-mix(in srgb, var(--c) 12%, transparent); }
