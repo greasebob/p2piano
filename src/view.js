@@ -116,12 +116,10 @@ export class PianoView {
         this.range = { first: 0, count: WHITES }; // the white keys shown
         this.mapDirty = true;
         this.keys = new Map();
-        this.held = new Map(); // note -> [{ who, color, vel }]
+        this.held = new Map(); // note -> [{ who, look, vel }]
         this.trails = [];
         this.bloom = document.createElement('canvas');
         this.style = 'glow';
-        this.colors = 'player';
-        this.custom = { white: '#14e0b0', black: '#ff1a8c' };
         this.glow = 0.5;
         this.speed = DEFAULT_SPEED;
         this.lights = new Map(); // color -> color at the current brightness
@@ -211,14 +209,8 @@ export class PianoView {
         });
     }
 
-    /**
-     * Colors notes by player, by key ('rainbow') or by white and black keys ('custom').
-     * @param {string} mode
-     * @param {{white:string, black:string}} custom
-     */
-    setColors(mode, custom) {
-        this.colors = mode;
-        this.custom = custom;
+    /** Paints the held keys again, once a player's look changed. */
+    repaint() {
         for (const [note, list] of this.held) this.paint(note, list[list.length - 1]);
     }
 
@@ -235,9 +227,13 @@ export class PianoView {
         for (const [note, list] of this.held) this.paint(note, list[list.length - 1]);
     }
 
-    colorOf(note, color) {
-        if (this.colors === 'rainbow') color = RAINBOW.get(note);
-        else if (this.colors === 'custom') color = isBlack(note) ? this.custom.black : this.custom.white;
+    /**
+     * A note's colour in a player's look { color, notes }: notes.mode 'rainbow' colours by key,
+     * 'custom' by white and black keys (notes.white, notes.black), anything else in the player's colour.
+     */
+    colorOf(note, look) {
+        const n = look.notes;
+        const color = n?.mode === 'rainbow' ? RAINBOW.get(note) : n?.mode === 'custom' ? (isBlack(note) ? n.black : n.white) : look.color;
         if (!this.lights.has(color)) this.lights.set(color, light(color, this.glow));
         return this.lights.get(color);
     }
@@ -277,8 +273,8 @@ export class PianoView {
         keysEl.addEventListener('contextmenu', e => e.preventDefault()); // a long press holds a note
     }
 
-    /** A player's key went down (vel > 0) or up. */
-    key(who, note, vel, color) {
+    /** A player's key went down (vel > 0) or up. `look` is the player's { color, notes }. */
+    key(who, note, vel, look) {
         const el = this.keys.get(note);
         if (!el) return;
         let list = this.held.get(note) ?? [];
@@ -286,8 +282,8 @@ export class PianoView {
         const now = performance.now();
         for (const t of this.trails) if (t.who === who && t.note === note && t.end === null) t.end = now;
         if (vel > 0) {
-            list.push({ who, color, vel });
-            this.trails.push({ who, note, color, alpha: 0.35 + 0.65 * vel / 127, start: now, end: null });
+            list.push({ who, look, vel });
+            this.trails.push({ who, note, look, alpha: 0.35 + 0.65 * vel / 127, start: now, end: null });
         }
         this.held.set(note, list);
         this.paint(note, list[list.length - 1]);
@@ -298,7 +294,7 @@ export class PianoView {
         el.classList.toggle('on', !!top);
         this.mapDirty = true;
         if (top) {
-            el.style.setProperty('--c', this.colorOf(note, top.color));
+            el.style.setProperty('--c', this.colorOf(note, top.look));
             el.style.setProperty('--a', String(0.45 + 0.55 * top.vel / 127));
         }
     }
@@ -335,7 +331,7 @@ export class PianoView {
                 const top = Math.max(h - (now - t.start) / 1000 * this.speed, -4);
                 const x = (box.x - off) * zoom * w + 1, bw = Math.max(2, box.w * zoom * w - 2), bh = Math.max(2, bottom - top);
                 if (x + bw < 0 || x > w) continue;
-                const color = this.colorOf(t.note, t.color);
+                const color = this.colorOf(t.note, t.look);
                 if (!glow) {
                     notes(g, t, rgb(color), x, top, bw, bh);
                     continue;
@@ -381,7 +377,7 @@ export class PianoView {
                 if (isBlack(note) !== black) continue;
                 const list = this.held.get(note);
                 const top = list?.[list.length - 1];
-                g.fillStyle = top ? this.colorOf(note, top.color) : black ? '#1f1f22' : '#d9d9d5';
+                g.fillStyle = top ? this.colorOf(note, top.look) : black ? '#1f1f22' : '#d9d9d5';
                 g.fillRect(box.x * w + (black ? 0 : 0.5), 0, box.w * w - (black ? 0 : 1), black ? h * 0.6 : h);
             }
         }
@@ -428,17 +424,17 @@ export class PianoView {
 
     /** One corona above each lit key, as bright as its brightest note there. */
     drawCoronas(g, w, h, now, zoom, off) {
-        const lit = new Map(); // note -> { level, color }
+        const lit = new Map(); // note -> { level, look }
         for (const t of this.trails) {
             const fade = t.end === null ? Math.min(1, (now - t.start) / 150) : 1 - (now - t.end) / 250;
             const level = fade * t.alpha;
-            if (level > (lit.get(t.note)?.level ?? 0)) lit.set(t.note, { level, color: t.color });
+            if (level > (lit.get(t.note)?.level ?? 0)) lit.set(t.note, { level, look: t.look });
         }
-        for (const [note, { level, color }] of lit) {
+        for (const [note, { level, look }] of lit) {
             const box = BOXES.get(note);
             const r = box.w * zoom * w * 1.6;
             g.globalAlpha = level * this.glow;
-            g.drawImage(sprite(this.colorOf(note, color)), (box.x + box.w / 2 - off) * zoom * w - r, h - r, 2 * r, 2 * r);
+            g.drawImage(sprite(this.colorOf(note, look)), (box.x + box.w / 2 - off) * zoom * w - r, h - r, 2 * r, 2 * r);
         }
     }
 }

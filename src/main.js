@@ -183,7 +183,7 @@ function join() {
         async onPeer(id, info) {
             const p = peer(id);
             p.sent = info;
-            p.info = { name: String(info?.name ?? 'Player').slice(0, 24), color: freeColor(id, info?.color), tags: p.info.tags };
+            p.info = { name: String(info?.name ?? 'Player').slice(0, 24), color: freeColor(id, info?.color), notes: notesOf(info?.notes), tags: p.info.tags };
             for (const c of Array.isArray(info?.untags) ? info.untags.slice(0, MAX_SENT_UNTAGS) : []) if (await book.add(c)) retag();
             await checkTags(p);
             renderPeople();
@@ -201,7 +201,7 @@ function join() {
                 return;
             }
             const type = status & 0xf0;
-            if (type === 0x90 && b > 0) view.key(id, a, b, p.info.color);
+            if (type === 0x90 && b > 0) view.key(id, a, b, p.info);
             else if (type !== 0xb0) view.key(id, a, 0);
         },
         onPing(id, ms) {
@@ -391,7 +391,7 @@ async function start() {
     loadedPiano = id;
     piano.setVolume(+$('volume').value / 100);
     piano.setReverb(+$('reverb').value);
-    myHand = new Hand(piano.synth, 0, (note, vel) => view.key(selfId, note, vel, me.color));
+    myHand = new Hand(piano.synth, 0, (note, vel) => view.key(selfId, note, vel, me));
     if (sustain) myHand.midi(0xb0, 64, sustain, 0);
     for (const p of peers.values()) attachHand(p);
     setStatus(null);
@@ -469,7 +469,7 @@ function attachHand(p) {
     const ch = PEER_CHANNELS.find(c => !used.has(c));
     if (ch === undefined) return; // no free channel: the player is shown but not heard
     p.hand = new Hand(piano.synth, ch, (note, vel, delayMs) => {
-        const show = () => view.key(p.id, note, vel, p.info.color);
+        const show = () => view.key(p.id, note, vel, p.info);
         if (delayMs > 0) setTimeout(show, delayMs);
         else show();
     });
@@ -503,6 +503,15 @@ function applyVolume(p) {
     if (p.hand) piano.synth.controllerChange(p.hand.ch, 7, Math.round(muteOf(p).vol ?? 100));
 }
 
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
+/** The note colours a player sent, { mode, white, black }, or null for their player colour. */
+function notesOf(n) {
+    if (n?.mode === 'rainbow') return { mode: 'rainbow' };
+    if (n?.mode === 'custom' && HEX_COLOR.test(n.white) && HEX_COLOR.test(n.black)) return { mode: 'custom', white: n.white, black: n.black };
+    return null;
+}
+
 /** Returns the wanted colour, or the next one no other player is shown in. */
 function freeColor(id, wanted) {
     const taken = new Set([me.color, ...[...peers.values()].filter(p => p.id !== id).map(p => p.info.color)]);
@@ -518,7 +527,7 @@ function freeColor(id, wanted) {
 function local(status, a, b) {
     net.send(status, a, b);
     if (myHand) myHand.midi(status, a, b, 0);
-    else if (status !== 0xb0) view.key(selfId, a, status === 0x90 ? b : 0, me.color);
+    else if (status !== 0xb0) view.key(selfId, a, status === 0x90 ? b : 0, me);
     if (status === 0x90 && b > 0) $('vel-last').textContent = b;
     if (status === 0xb0) {
         if (a === 64) sustain = b;
@@ -755,8 +764,15 @@ function bindControls() {
         view.setStyle($('style').value);
         view.setBrightness(+$('brightness').value / 100);
         view.setSpeed(+$('speed').value);
-        view.setColors(mode, { white: $('white-color').value, black: $('black-color').value });
+        // Note colours are the player's own: everyone sees this player's notes in them
+        const was = JSON.stringify(me.notes);
+        me.notes = notesOf({ mode, white: $('white-color').value, black: $('black-color').value });
+        if (JSON.stringify(me.notes) === was) return;
+        view.repaint();
+        clearTimeout(notesTimer);
+        notesTimer = setTimeout(() => net?.setMe(me), 300); // a colour being dragged sends once it rests
     };
+    let notesTimer = 0;
     for (const id of ['style', 'colors', 'white-color', 'black-color', 'brightness', 'speed']) {
         $(id).addEventListener(id === 'style' || id === 'colors' ? 'change' : 'input', () => {
             store.set(`pr-${id}`, $(id).value);
