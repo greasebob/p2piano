@@ -107,8 +107,7 @@ input:not([type]):focus, input[type=text]:focus { border-color: var(--accent); o
     display: flex; align-items: center; justify-content: center; gap: 14px; margin: 0 0 24px;
     font-size: clamp(36px, 9vw, 52px); line-height: 1.1; font-weight: 700; letter-spacing: -0.02em;
 }
-#start h1 svg { width: 1em; height: 1.08em; color: var(--text); }
-#start h1 .tie { fill: var(--accent); stroke: var(--accent); }
+#start h1 svg { width: 1em; height: 1em; filter: drop-shadow(0 1px 1px rgb(0 0 0 / .25)); }
 #start h1 .p2p { color: var(--accent); }
 #start input { height: 54px; padding: 0 18px; border-radius: 12px; text-align: center; }
 #start button { height: 54px; gap: 10px; border-radius: 12px; }
