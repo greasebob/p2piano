@@ -651,14 +651,14 @@ function bindKeyboard() {
 
 function bindMidi() {
     if (!navigator.requestMIDIAccess) return;
-    // A device that turns typing into MIDI keeps playing while the player chats or uses another
-    // window, so presses count only while the room has focus and no text field does. Releases
-    // always count, so a key held while focus moves does not stick.
+    // A device that turns typing into MIDI keeps playing while the player chats, so presses do not
+    // count while they type in the room. In another window they do, so a player such as StepMidi
+    // plays from the background. Releases always count, so a key held while typing does not stick.
     const typing = () => {
         const el = document.activeElement;
-        return el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && ['text', 'password', 'search'].includes(el.type));
+        return document.hasFocus() && (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && ['text', 'password', 'search'].includes(el.type)));
     };
-    const listening = () => document.hasFocus() && !typing();
+    const listening = () => !typing();
     const held = new Set(); // keys a MIDI press put down
     navigator.requestMIDIAccess().then(access => {
         const off = new Set(JSON.parse(store.get('pr-midi-off', '[]')));
