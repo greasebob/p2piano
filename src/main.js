@@ -614,7 +614,13 @@ function bindKeyboard() {
         }
         held.set(e.code, notes);
         local(0x90, note, keyboardVelocity);
+        // Outside full screen the browser keeps Ctrl+W, Ctrl+T and Ctrl+N; its button lets them play
+        if (e.ctrlKey && !document.fullscreenElement && !fullscreenHinted && !$('fullscreen').hidden) {
+            fullscreenHinted = true;
+            $('fullscreen').classList.add('hint');
+        }
     });
+    let fullscreenHinted = false;
 
     window.addEventListener('keyup', e => {
         if (isAlt(e.code)) {
@@ -719,6 +725,7 @@ function bindControls() {
 
     $('fullscreen').hidden = !document.fullscreenEnabled;
     $('fullscreen').addEventListener('click', async () => {
+        $('fullscreen').classList.remove('hint');
         if (document.fullscreenElement) return document.exitFullscreen();
         await document.documentElement.requestFullscreen();
         // Keyboard lock lets Ctrl+W and Ctrl+T through to the page as notes.

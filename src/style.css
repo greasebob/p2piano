@@ -84,6 +84,8 @@ button:hover { background: var(--hover); }
 button:active { transform: translateY(1px); }
 button.icon { width: 32px; padding: 0; justify-content: center; background: transparent; border-color: transparent; color: var(--muted); }
 button.icon:hover { background: var(--hover); color: var(--text); }
+button.icon.hint { color: var(--text); animation: hint 0.8s ease-in-out 4 alternate; }
+@keyframes hint { from { background: transparent; } to { background: var(--hover); box-shadow: 0 0 0 2px var(--line); } }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; justify-content: center; }
 button.primary:hover { background: color-mix(in srgb, var(--accent) 88%, white); }
 select {
