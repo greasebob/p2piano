@@ -39,25 +39,26 @@ async function passProof(roomId, nonce, password) {
  * Joins a room. `ident` is this browser's identity, `since` when this player entered the room.
  * handlers:
  *   onPeer(id, info), onLeave(id), onMidi(id, status, a, b, holdMs), onPing(id, ms), onChat(id, text),
- *   onRoom(id, state), onMod(id, msg),
+ *   onRoom(id, state), onMod(id, msg), onCert(id, cert),
  *   chain() the ownership chain to hand on, offerChain(chain) one a peer handed on,
+ *   att() this player's account attestation or null, accountOf(att, key) the account ids a peer's proves or null,
  *   refuse(id, them) 'ban', 'kick' or null for a peer about to join,
  *   onRefused(them, why) when a peer would not let this player in,
  *   password() the room's password as this player knows it ('' for none),
  *   onWrongPassword(them) when a peer knows another password.
  */
 export function connect(roomId, me, ident, since, handlers) {
-    const idents = new Map(); // id -> { key, id, since }, checked in the handshake
+    const idents = new Map(); // id -> { key, id, since, ids }, checked in the handshake
     const blocked = new Set(); // ids this player no longer talks to
 
     // Each side proves its key, then that it knows the password, and says whether it lets the other in.
     const handshake = async (peerId, send, receive) => {
         const nonce = b64(crypto.getRandomValues(new Uint8Array(18)));
-        await send({ key: ident.key, sig: await ident.sign(helloText(roomId, selfId, peerId)), since, chain: handlers.chain(), nonce });
+        await send({ key: ident.key, sig: await ident.sign(helloText(roomId, selfId, peerId)), since, chain: handlers.chain(), att: handlers.att(), nonce });
         const { data } = await receive();
         if (!data || typeof data.key !== 'string' || typeof data.sig !== 'string' || !Number.isFinite(data.since) || typeof data.nonce !== 'string') throw new Error('no identity');
         if (!await verify(data.key, data.sig, helloText(roomId, peerId, selfId))) throw new Error('identity not proven');
-        const them = { key: data.key, id: await keyId(data.key), since: data.since };
+        const them = { key: data.key, id: await keyId(data.key), since: data.since, ids: await handlers.accountOf(data.att, data.key) };
         await handlers.offerChain(data.chain);
         const refusal = blocked.has(peerId) ? 'kick' : handlers.refuse(peerId, them);
         await send({ proof: await passProof(roomId, data.nonce, handlers.password()), ...refusal ? { refuse: refusal } : {} });
@@ -81,6 +82,7 @@ export function connect(roomId, me, ident, since, handlers) {
     const chat = room.makeAction('chat');
     const state = room.makeAction('room');
     const mod = room.makeAction('mod');
+    const cert = room.makeAction('cert');
     const peers = new Map(); // id -> { lateness: number[] }
     let queue = null;
 
@@ -105,6 +107,7 @@ export function connect(roomId, me, ident, since, handlers) {
     hi.onMessage = from((info, peerId) => handlers.onPeer(peerId, info));
     state.onMessage = from((data, peerId) => handlers.onRoom(peerId, data));
     mod.onMessage = from((data, peerId) => handlers.onMod(peerId, data));
+    cert.onMessage = from((data, peerId) => handlers.onCert(peerId, data));
 
     // Message: [sendTime, status, a, b, status, a, b, ...]. Clocks differ by an unknown offset,
     // so each message is held until the 90th percentile of recent lateness to smooth jitter.
@@ -159,6 +162,11 @@ export function connect(roomId, me, ident, since, handlers) {
         mod(data, target = null) {
             if (target) mod.send(data, { target });
             else everyone(mod, data);
+        },
+        /** Sends a tag certificate to one peer, or to everyone. */
+        cert(data, target = null) {
+            if (target) cert.send(data, { target });
+            else everyone(cert, data);
         },
         /** Stops talking to a peer; it is refused if it connects again. */
         block(id) {

@@ -139,6 +139,7 @@ input:not([type]):focus, input[type=text]:focus { border-color: var(--accent); o
 #player-menu button[aria-pressed=true] svg { color: currentColor; }
 #pm-hosting { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
 #pm-hosting[hidden] { display: none; }
+.pm-tags { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
 #player-menu .danger, #player-menu .danger svg { color: var(--error); }
 #player-menu .armed { background: color-mix(in srgb, var(--error) 14%, transparent); color: var(--error); }
 #player-menu #pm-host.armed { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
@@ -189,6 +190,31 @@ header {
     color: var(--on-accent); background: var(--accent);
 }
 .tag-dev { background: linear-gradient(135deg, #b28cf2, #5ec7e8); color: #0d0b14; }
+.tag-trusted { background: #8bd17c; color: #0d140b; }
+.tag-tester { background: #f58d4e; color: #140d0b; }
+.tag-list { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.tag-list[hidden], .account[hidden], .pm-tags[hidden] { display: none; }
+
+/* Account: sign-ins, logins, merges */
+.brand { width: 18px; height: 18px; flex: none; fill: currentColor; }
+.brand-discord { color: #5865f2; }
+.account { display: grid; gap: 8px; }
+.account:has(> .sign-in) { display: flex; gap: 10px; }
+.account .sign-in { flex: 1; justify-content: center; color: var(--muted); }
+#start .account button:not(.sign-in) { height: 32px; gap: 4px; border-radius: 8px; }
+#start .account button:not(.sign-in) svg { width: 16px; height: 16px; }
+#start .account .sign-in { font-size: 15px; }
+#start .account .sign-in .brand { width: 20px; height: 20px; }
+.account .logins { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.account .logins li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
+.account .logins li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-actions { display: flex; gap: 6px; }
+.account-actions .add-login { gap: 4px; padding: 0 8px; }
+.account-actions .add-login svg { width: 14px; height: 14px; }
+.account-actions .sign-out { margin-left: auto; }
+.account .merge { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--text); padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.account .merge > svg.lucide-merge { width: 16px; height: 16px; color: var(--accent); }
+.account .merge .merge-yes { margin-left: auto; height: 28px; padding: 0 10px; }
 #chat {
     flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px;
     margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line);

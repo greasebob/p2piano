@@ -2,26 +2,28 @@ import './style.css';
 import {
     createIcons, createElement, Link, Check, Maximize, Minimize, Settings, LogIn, Plus, Keyboard,
     ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp, Users,
-    Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2,
+    Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2, LogOut, Merge, X, Tag,
 } from 'lucide';
+import { siDiscord, siRoblox } from 'simple-icons';
 import { BANKS, loadBank, createPiano, Hand } from './audio.js';
 import { connect, selfId, MAX_CHAT } from './net.js';
 import { PianoView, STYLES } from './view.js';
 import { keyAction, keyLabels, noteLabels, levelVelocity, SUSTAIN_CODE, SOSTENUTO_CODE } from './keys.js';
 import { loadIdentity, importIdentity, roomCode, newSalt, chainOwner, handoverText } from './identity.js';
+import { TAGS, GIVEN, ROOT_ID, TagBook, checkAtt, makeCert } from './certs.js';
+import { Accounts, accountsOn, ACCOUNTS_KEY } from './accounts.js';
 
 const ICONS = {
     Link, Check, Maximize, Minimize, Settings, LogIn, Plus, Keyboard,
     ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp, Users,
-    Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2,
+    Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2, LogOut, Merge, X, Tag,
 };
 const COLORS = ['#f2b84b', '#5ec7e8', '#ef6f8e', '#8bd17c', '#b28cf2', '#f58d4e', '#4fd1b5', '#e8e15e'];
 const PEER_CHANNELS = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]; // 0 is ours, 9 is drums, 15 preloads
 const MAX_TRANSPOSE = 24;
-// Tags a player may show beside their name, each held by the keys listed; the player turns theirs on or off.
-const TAGS = {
-    dev: { label: 'Dev', ids: ['ZYo5K3u3LA4sUD6g'] },
-};
+const BRANDS = { discord: siDiscord, roblox: siRoblox };
+const MAX_SHOWN_TAGS = 3;
+const MAX_SENT_UNTAGS = 50;
 const MAX_BANS = 500;
 const REFUSED_WAIT_MS = 4000;
 const PASSWORD_WAIT_MS = 5000;
@@ -37,6 +39,13 @@ const session = {
     take(k) { try { const v = sessionStorage.getItem(k); sessionStorage.removeItem(k); return v; } catch { return null; } },
     set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* storage unavailable */ } },
 };
+// The accounts service comes back with #login=<code> (or #login-failed); the room link the player left from is put back.
+const accounts = new Accounts(store, session);
+const loginCode = /^#login=([\w-]+)$/.exec(location.hash)?.[1];
+const loginFailed = location.hash === '#login-failed';
+if (loginCode || loginFailed) history.replaceState(null, '', location.pathname + location.search + (session.take('pr-return') || ''));
+const accountReady = loginCode ? accounts.redeem(loginCode).catch(() => showNotice('login')) : Promise.resolve();
+
 // A room link is #code, or #code/lock when the room has a password.
 const roomFromHash = () => (/^#([a-z0-9]{4,32})(\/lock)?$/.exec(location.hash) || [])[1] || null;
 const lockedHash = () => /\/lock$/.test(location.hash);
@@ -47,7 +56,8 @@ if (devKey) history.replaceState(null, '', location.pathname + location.search);
 const identReady = (devKey ? importIdentity(store, devKey).catch(() => {}) : Promise.resolve()).then(() => loadIdentity(store));
 
 let roomId = roomFromHash();
-let me = { name: store.get('pr-name', ''), color: store.get('pr-color', COLORS[Math.floor(Math.random() * COLORS.length)]), tag: null };
+// tags: the tags shown, certs: the certificates that give them, untags: some of the take-backs seen, to pass on
+let me = { name: store.get('pr-name', ''), color: store.get('pr-color', COLORS[Math.floor(Math.random() * COLORS.length)]), tags: [], certs: [], untags: [] };
 store.set('pr-color', me.color);
 
 let ident = null; // this browser's key
@@ -56,6 +66,8 @@ let password = '';
 let room = {}; // this room as remembered here: { salt, pass, chain, bans: { v, list: [{ id, name }] } }
 let ownerKey = null; // the room's owner, from its ownership chain
 const mutes = loadMutes(); // key id -> { vol, play, chat }, this player's own
+const book = new TagBook(store, ACCOUNTS_KEY);
+let held = new Set(); // the tags this player holds
 let ctx, net, view;
 let piano = null;
 let myHand = null;
@@ -72,12 +84,17 @@ const NOTICES = {
     kick: ['user-x', 'Kicked from the room'],
     ban: ['ban', 'Banned from the room'],
     password: ['lock', 'Wrong password'],
+    login: ['log-in', 'Sign-in failed'],
 };
-const notice = NOTICES[session.take('pr-notice')];
-if (notice) {
-    $('notice').innerHTML = `<i data-lucide="${notice[0]}"></i><span>${notice[1]}</span>`;
+function showNotice(why) {
+    const n = NOTICES[why];
+    if (!n) return null;
+    $('notice').innerHTML = `<i data-lucide="${n[0]}"></i><span>${n[1]}</span>`;
     $('notice').hidden = false;
+    icons();
+    return n;
 }
+const notice = showNotice(loginFailed ? 'login' : session.take('pr-notice'));
 $('name').value = me.name;
 $('go').innerHTML = roomId
     ? '<i data-lucide="log-in"></i><span>Join room</span>'
@@ -97,6 +114,7 @@ $('lock').addEventListener('click', () => {
     if (on) $('pass').focus();
 });
 icons();
+accountReady.then(() => renderAccount($('start-account')));
 
 $('start-form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -104,7 +122,8 @@ $('start-form').addEventListener('submit', async e => {
     store.set('pr-name', me.name);
     $('go').disabled = true;
     ident = await identReady;
-    password = $('pass').hidden ? '' : $('pass').value;
+    await accountReady;
+    password =$('pass').hidden ? '' : $('pass').value;
     if (roomId) {
         room = loadRoom(roomId);
         if ($('pass').hidden) password = room.pass ?? '';
@@ -139,7 +158,7 @@ async function enter() {
     ctx = new AudioContext({ latencyHint: 'interactive' });
     $('labels').value = store.get('pr-labels', 'qwerty') === 'notes' ? 'notes' : 'qwerty';
     view = new PianoView($('keys'), $('rise'), labelsFor($('labels').value), (note, vel) => local(vel ? 0x90 : 0x80, note, vel));
-    bindTags();
+    await prepareTags();
     join();
     renderPeople();
     bindChat();
@@ -148,6 +167,10 @@ async function enter() {
     bindControls();
     bindPlayerMenu();
     bindRoomSettings();
+    $('settings').addEventListener('toggle', e => {
+        if (e.newState === 'open' && accounts.signedIn) accounts.refresh().catch(() => {}).then(() => renderAccount($('account')));
+    });
+    renderAccount($('account'));
     start().catch(showError);
 }
 
@@ -156,10 +179,12 @@ let passwordTimer = 0;
 
 function join() {
     net = connect(roomId, me, ident, since, {
-        onPeer(id, info) {
+        async onPeer(id, info) {
             const p = peer(id);
-            const tag = TAGS[info?.tag] && TAGS[info.tag].ids.includes(p.ident?.id) ? info.tag : null;
-            p.info = { name: String(info?.name ?? 'Player').slice(0, 24), color: freeColor(id, info?.color), tag };
+            p.sent = info;
+            p.info = { name: String(info?.name ?? 'Player').slice(0, 24), color: freeColor(id, info?.color), tags: p.info.tags };
+            for (const c of Array.isArray(info?.untags) ? info.untags.slice(0, MAX_SENT_UNTAGS) : []) if (await book.add(c)) retag();
+            await checkTags(p);
             renderPeople();
             wakeSidebar();
             if (sustain) net.send(0xb0, 64, sustain); // a held or inverted pedal, for someone who just joined
@@ -190,6 +215,8 @@ function join() {
         },
         state: () => ({ chain: room.chain ?? null, bans: bans() }),
         chain: () => room.chain ?? null,
+        att: () => accounts.att,
+        accountOf: (att, key) => checkAtt(att, ACCOUNTS_KEY, key),
         offerChain: adoptChain,
         refuse: (id, them) => (isBanned(them) ? 'ban' : null),
         onRefused(them, why) {
@@ -209,6 +236,9 @@ function join() {
         },
         onMod(id, msg) {
             hostMessage(id, msg);
+        },
+        onCert(id, cert) {
+            takeCert(cert).catch(() => {});
         },
     });
 }
@@ -248,7 +278,8 @@ function saveRoom() {
 }
 
 const bans = () => room.bans ?? { v: 0, list: [] };
-const isBanned = them => them.key !== ownerKey && bans().list.some(b => b.id === them.id);
+// A ban names the player's key and, when signed in, their account, so it holds in every browser of theirs.
+const isBanned = them => them.key !== ownerKey && bans().list.some(b => b.id === them.id || (b.acct && them.ids?.includes(b.acct)));
 
 /** Everyone in the room this player can see, itself included. */
 function members() {
@@ -296,7 +327,11 @@ async function roomState(id, data) {
 function setBans(list) {
     room.bans = {
         v: list.v,
-        list: list.list.slice(0, MAX_BANS).map(b => ({ id: String(b?.id ?? '').slice(0, 16), name: String(b?.name ?? '').slice(0, 24) })),
+        list: list.list.slice(0, MAX_BANS).map(b => ({
+            id: String(b?.id ?? '').slice(0, 16),
+            ...typeof b?.acct === 'string' && b.acct ? { acct: b.acct.slice(0, 32) } : {},
+            name: String(b?.name ?? '').slice(0, 24),
+        })),
     };
     saveRoom();
     for (const p of [...peers.values()]) if (p.ident && isBanned(p.ident)) drop(p.id);
@@ -321,8 +356,9 @@ function kick(p) {
 function ban(p) {
     if (!amHost() || !p.ident || p.ident.key === ownerKey) return;
     net.mod({ out: 'ban' }, p.id);
-    const list = bans().list.filter(b => b.id !== p.ident.id);
-    setBans({ v: bans().v + 1, list: [...list, { id: p.ident.id, name: p.info.name }] });
+    const acct = p.ident.ids?.[0];
+    const list = bans().list.filter(b => b.id !== p.ident.id && (!acct || b.acct !== acct));
+    setBans({ v: bans().v + 1, list: [...list, { id: p.ident.id, ...acct ? { acct } : {}, name: p.info.name }] });
     net.shareState();
 }
 
@@ -401,7 +437,7 @@ function labelsFor(mode) {
 
 function peer(id) {
     if (!peers.has(id)) {
-        const p = { id, ident: net.ident(id), info: { name: '…', color: '#888888', tag: null }, hand: null, ping: null };
+        const p = { id, ident: net.ident(id), info: { name: '…', color: '#888888', tags: [] }, held: new Set(), sent: null, hand: null, ping: null };
         peers.set(id, p);
         attachHand(p);
     }
@@ -778,7 +814,7 @@ function addMessage(info, text) {
     name.textContent = info.name;
     name.style.setProperty('--c', info.color);
     li.append(name);
-    if (info.tag) li.append(' ', tagPill(info.tag));
+    for (const t of info.tags ?? []) li.append(' ', tagPill(t));
     li.append(' ', text);
     list.append(li);
     while (list.children.length > MAX_MESSAGES) list.firstChild.remove();
@@ -821,7 +857,7 @@ function renderPeople() {
         name.className = 'name';
         name.textContent = info.name;
         body.append(name);
-        if (info.tag) body.append(tagPill(info.tag));
+        for (const t of info.tags ?? []) body.append(tagPill(t));
         if (id === host) body.append(icon(Crown, 'crown', 'Host'));
         const m = p ? muteOf(p) : {};
         if (m.play) body.append(icon(VolumeX, 'volume-x', 'Muted'));
@@ -893,6 +929,23 @@ function disarm(b) {
     if (b.dataset.label) b.lastChild.textContent = b.dataset.label;
 }
 
+/** A Dev's buttons for the tags they give. */
+function renderMenuTags(p) {
+    const box = $('pm-tags');
+    box.replaceChildren();
+    box.hidden = issuer() === undefined || !p.ident;
+    if (box.hidden) return;
+    for (const t of GIVEN) {
+        const b = button([icon(Tag, 'tag'), text(TAGS[t].label)], TAGS[t].label, async () => {
+            await giveTag(p, t);
+            b.ariaPressed = String(p.held.has(t));
+        }, 'toggle');
+        b.dataset.tag = t;
+        b.ariaPressed = String(p.held.has(t));
+        box.append(b);
+    }
+}
+
 function openPlayerMenu(p, anchor) {
     const menu = $('player-menu');
     menuPeer = p.id;
@@ -907,6 +960,7 @@ function openPlayerMenu(p, anchor) {
     $('pm-hosting').hidden = !amHost() || owner;
     $('pm-host').hidden = ownerKey !== ident.key || !p.ident;
     $('pm-ban').hidden = !p.ident;
+    renderMenuTags(p);
     menu.showPopover();
     const r = anchor.getBoundingClientRect();
     const w = menu.offsetWidth;
@@ -949,22 +1003,251 @@ function renderRoomSettings() {
     }
 }
 
-// Tags
+// Tags. A player shows the tags their certificates give them and can hide any of them; a Dev gives
+// and takes back the others from the player menu. See certs.js.
 
-function bindTags() {
-    const mine = Object.keys(TAGS).find(t => TAGS[t].ids.includes(ident.id));
-    $('tag-row').hidden = !mine;
-    if (!mine) return;
-    $('tag-pill').replaceWith(Object.assign(tagPill(mine), { id: 'tag-pill' }));
-    $('tag-on').checked = store.get('pr-tag', '1') === '1';
-    const apply = () => {
-        me.tag = $('tag-on').checked ? mine : null;
-        store.set('pr-tag', me.tag ? '1' : '0');
+function localCerts() {
+    try {
+        const list = JSON.parse(store.get('pr-certs', '[]'));
+        return Array.isArray(list) ? list : [];
+    } catch {
+        return [];
+    }
+}
+
+const hiddenTags = () => new Set(store.get('pr-tags-hidden', store.get('pr-tag', '1') === '0' ? 'dev' : '').split(',').filter(Boolean));
+const myIds = () => accounts.att?.ids ?? null;
+const mySubs = () => [`k:${ident.id}`, ...(myIds() ?? []).map(a => `a:${a}`)];
+
+/** Gets the account's attestation and certificates, then works out this player's tags. */
+async function prepareTags() {
+    if (accountsOn && accounts.signedIn) {
+        await accounts.attest(ident).catch(() => {});
+        for (const c of accounts.untags) await book.add(c);
+        // The root key makes its account Dev, so the tag comes along wherever the dev signs in
+        const ids = myIds();
+        if (ident.id === ROOT_ID && ids && !accounts.certs.some(c => c.tag === 'dev' && c.sub === `a:${ids[0]}`)) {
+            const dev = await makeCert(ident, 'tag', 'dev', `a:${ids[0]}`);
+            accounts.certs.push(dev);
+            accounts.putCert(dev);
+        }
+    }
+    await myTags();
+}
+
+/** This player's certificates: kept in this browser for its key, from the accounts service for its account. */
+function myCerts() {
+    const best = new Map();
+    for (const c of [...localCerts(), ...accounts.certs]) {
+        const k = `${c?.tag}|${c?.sub}`;
+        if (!best.has(k) || best.get(k).n < c.n) best.set(k, c);
+    }
+    return [...best.values()];
+}
+
+async function myTags() {
+    const certs = myCerts();
+    held = await book.holds(certs, ident.id, myIds());
+    const hidden = hiddenTags();
+    me.tags = Object.keys(TAGS).filter(t => held.has(t) && !hidden.has(t)).slice(0, MAX_SHOWN_TAGS);
+    me.certs = [];
+    for (const c of certs) if (await book.stands(c)) me.certs.push(c);
+    me.untags = book.all().sort((a, b) => b.n - a.n).slice(0, MAX_SENT_UNTAGS);
+    renderTagSettings();
+}
+
+/** Works out which of the tags a peer shows stand. */
+async function checkTags(p) {
+    if (!p.ident || !p.sent) return;
+    p.held = await book.holds(p.sent.certs, p.ident.id, p.ident.ids);
+    const shown = Array.isArray(p.sent.tags) ? p.sent.tags : [];
+    p.info.tags = Object.keys(TAGS).filter(t => shown.includes(t) && p.held.has(t)).slice(0, MAX_SHOWN_TAGS);
+}
+
+/** Works everyone's tags out again, once a tag was given or taken back. */
+let retagging = null;
+function retag() {
+    retagging ??= Promise.resolve().then(async () => {
+        retagging = null;
+        await myTags();
         net?.setMe(me);
+        for (const p of peers.values()) await checkTags(p);
         renderPeople();
-    };
-    $('tag-on').addEventListener('change', apply);
-    me.tag = $('tag-on').checked ? mine : null;
+    });
+    return retagging;
+}
+
+/** A certificate a peer sent: a tag given to this player, or one taken back from anyone. */
+async function takeCert(cert) {
+    if (cert?.kind === 'untag') {
+        if (await book.add(cert)) retag();
+        return;
+    }
+    if (cert?.kind !== 'tag' || !mySubs().includes(cert.sub) || !await book.stands(cert)) return;
+    const others = list => list.filter(c => c.tag !== cert.tag || c.sub !== cert.sub);
+    if (cert.sub.startsWith('k:')) store.set('pr-certs', JSON.stringify([...others(localCerts()), cert].slice(-20)));
+    else accounts.certs = [...others(accounts.certs), cert];
+    retag();
+}
+
+/** What a Dev signs with: null for the root key, its attestation and Dev certificate for a Dev's account, undefined for anyone else. */
+function issuer() {
+    if (ident.id === ROOT_ID) return null;
+    const dev = me.certs.find(c => c.tag === 'dev' && c.sub.startsWith('a:') && !c.by);
+    return dev && accounts.att ? { att: accounts.att, dev } : undefined;
+}
+
+/** Gives a player a tag, or takes it back from their key and every account of theirs. */
+async function giveTag(p, tag) {
+    const by = issuer();
+    if (by === undefined || !p.ident) return;
+    if (p.held.has(tag)) {
+        p.held.delete(tag);
+        for (const sub of [`k:${p.ident.id}`, ...(p.ident.ids ?? []).map(a => `a:${a}`)]) {
+            const c = await makeCert(ident, 'untag', tag, sub, by);
+            await book.add(c);
+            net.cert(c);
+            if (sub.startsWith('a:')) accounts.putCert(c);
+        }
+        retag();
+        return;
+    }
+    p.held.add(tag);
+    const sub = p.ident.ids ? `a:${p.ident.ids[0]}` : `k:${p.ident.id}`;
+    const c = await makeCert(ident, 'tag', tag, sub, by);
+    net.cert(c, p.id);
+    if (sub.startsWith('a:')) accounts.putCert(c);
+}
+
+function renderTagSettings() {
+    const box = $('tag-list');
+    box.replaceChildren();
+    box.hidden = !held.size;
+    const hidden = hiddenTags();
+    for (const t of Object.keys(TAGS).filter(t => held.has(t))) {
+        const label = document.createElement('label');
+        label.className = 'check';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.dataset.tag = t;
+        input.checked = !hidden.has(t);
+        input.addEventListener('change', () => {
+            const now = hiddenTags();
+            if (input.checked) now.delete(t);
+            else now.add(t);
+            store.set('pr-tags-hidden', [...now].join(','));
+            retag();
+        });
+        label.append(input, tagPill(t));
+        box.append(label);
+    }
+}
+
+// Account: Discord and Roblox sign-ins, more logins added any time, and merging with an account
+// signed in from the same network (both accounts must ask).
+
+const PROVIDER_NAMES = { discord: 'Discord', roblox: 'Roblox' };
+const SVG = 'http://www.w3.org/2000/svg';
+
+function brand(provider) {
+    if (!BRANDS[provider]) return icon(LogIn, 'log-in');
+    const svg = document.createElementNS(SVG, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('class', `brand brand-${provider}`);
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS(SVG, 'path');
+    path.setAttribute('d', BRANDS[provider].path);
+    svg.append(path);
+    return svg;
+}
+
+function button(parts, title, act, cls = '') {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    if (cls) b.className = cls;
+    b.append(...parts);
+    b.addEventListener('click', () => act(b));
+    return b;
+}
+
+const text = t => Object.assign(document.createElement('span'), { textContent: t });
+
+function leaveFor(provider) {
+    window.removeEventListener('beforeunload', keepOpen);
+    accounts.go(provider, location.hash).catch(err => {
+        if (ident && !$('room').hidden) window.addEventListener('beforeunload', keepOpen);
+        showError(err);
+    });
+}
+
+/** After the account changed: its attestation and tags again, everywhere they are shown. */
+async function accountChanged() {
+    accounts.att = null;
+    if (ident && net) {
+        await prepareTags();
+        net.setMe(me);
+        renderPeople();
+    }
+    renderAccounts();
+}
+
+function renderAccounts() {
+    renderAccount($('start-account'));
+    renderAccount($('account'));
+}
+
+async function renderAccount(el) {
+    el.hidden = !accountsOn;
+    if (!accountsOn) return;
+    if (accounts.signedIn && !accounts.info) await accounts.refresh().catch(() => {});
+    const offered = await accounts.providers();
+    el.replaceChildren();
+    const info = accounts.info;
+    if (!info) {
+        el.hidden = !offered.length;
+        for (const pr of offered) el.append(button([brand(pr), text(PROVIDER_NAMES[pr])], `Sign in with ${PROVIDER_NAMES[pr]}`, () => leaveFor(pr), 'sign-in'));
+        return;
+    }
+    const list = document.createElement('ul');
+    list.className = 'logins';
+    for (const l of info.logins) {
+        const li = document.createElement('li');
+        li.append(brand(l.provider), text(l.name));
+        if (info.logins.length > 1) {
+            li.append(button([icon(X, 'x')], `Remove ${PROVIDER_NAMES[l.provider]} ${l.name}`, async () => {
+                await accounts.unlink(l).catch(showError);
+                renderAccounts();
+            }, 'icon'));
+        }
+        list.append(li);
+    }
+    const actions = document.createElement('div');
+    actions.className = 'account-actions';
+    for (const pr of offered) actions.append(button([icon(Plus, 'plus'), brand(pr)], `Add ${PROVIDER_NAMES[pr]}`, () => leaveFor(pr), 'add-login'));
+    actions.append(button([icon(LogOut, 'log-out')], 'Sign out', async () => {
+        await accounts.logout();
+        accountChanged();
+    }, 'icon sign-out'));
+    el.append(list, actions);
+    for (const s of info.suggest) {
+        const row = document.createElement('div');
+        row.className = 'merge';
+        row.dataset.acct = s.acct;
+        row.append(icon(Merge, 'merge'));
+        for (const l of s.logins) row.append(brand(l.provider), text(l.name));
+        const ask = button([text(s.sent ? 'Asked' : 'Merge')], 'Merge accounts', async () => {
+            await accounts.merge(s.acct).catch(showError);
+            accountChanged();
+        }, 'merge-yes');
+        ask.disabled = s.sent && !s.asked;
+        row.append(ask, button([icon(X, 'x')], 'Not mine', async () => {
+            await accounts.merge(s.acct, true).catch(showError);
+            renderAccounts();
+        }, 'icon merge-no'));
+        el.append(row);
+    }
 }
 
 /** Shows loading progress (0-1) or an error in the header; null text hides it. */

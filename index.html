@@ -18,6 +18,7 @@
             <button id="go" type="submit" class="primary"></button>
             <button id="lock" type="button" aria-pressed="false" title="Password" aria-label="Password"><i data-lucide="lock-open"></i></button>
         </div>
+        <div id="start-account" class="account" hidden></div>
     </form>
 </main>
 
@@ -51,8 +52,9 @@
         <h2 id="settings-title">Settings</h2>
         <div class="section">
         <label>Name <input id="my-name" maxlength="24"></label>
-        <label class="check" id="tag-row" hidden><input id="tag-on" type="checkbox"><span id="tag-pill"></span></label>
+        <div id="tag-list" class="tag-list" hidden></div>
         </div>
+        <div class="section account" id="account" hidden></div>
         <div class="section" id="room-settings" hidden>
         <label>Room password <input id="room-pass" type="text" maxlength="64" autocomplete="off" placeholder="None"></label>
         <fieldset id="bans-box" hidden>
@@ -106,6 +108,7 @@
         <label class="pm-volume"><i data-lucide="volume-2"></i><input id="pm-volume" type="range" min="0" max="100" aria-label="Volume"><output id="pm-volume-val" for="pm-volume"></output></label>
         <button id="pm-play" type="button" class="toggle" aria-pressed="false"><i data-lucide="volume-x"></i><span>Mute playing</span></button>
         <button id="pm-chat" type="button" class="toggle" aria-pressed="false"><i data-lucide="message-square-off"></i><span>Mute chat</span></button>
+        <div id="pm-tags" class="pm-tags" hidden></div>
         <div id="pm-hosting">
             <button id="pm-host" type="button"><i data-lucide="crown"></i><span>Make host</span></button>
             <button id="pm-kick" type="button"><i data-lucide="user-x"></i><span>Kick</span></button>

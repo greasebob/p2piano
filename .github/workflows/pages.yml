@@ -31,6 +31,8 @@ jobs:
         env:
           VITE_TURN_USER: ${{ secrets.TURN_USER }}
           VITE_TURN_PASS: ${{ secrets.TURN_PASS }}
+          VITE_ACCOUNTS_URL: ${{ vars.ACCOUNTS_URL }}
+          VITE_ACCOUNTS_KEY: ${{ vars.ACCOUNTS_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

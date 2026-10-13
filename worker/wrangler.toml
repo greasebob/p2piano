@@ -1,0 +1,15 @@
+# P2Piano accounts. See ACCOUNTS.md for setting it up.
+name = "p2piano-accounts"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+PUBLIC_URL = "https://p2piano-accounts.greasebob.workers.dev"
+RETURNS = "https://greasebob.github.io/p2piano/,http://localhost:5179/"
+DISCORD_CLIENT_ID = ""
+ROBLOX_CLIENT_ID = ""
+
+[[d1_databases]]
+binding = "DB"
+database_name = "p2piano"
+database_id = "00000000-0000-0000-0000-000000000000"
