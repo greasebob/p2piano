@@ -1008,22 +1008,25 @@ function bindViaCard() {
         viaFor = null;
         viaCard.hidden = true;
     };
+    const later = () => {
+        if (!viaCard.hidden && !viaTimer) viaTimer = setTimeout(() => { viaTimer = 0; hide(); }, 200);
+    };
     document.addEventListener('pointermove', e => {
         const row = e.target.closest?.('#people .person[data-via]');
         if (row || e.target.closest?.('#via-card')) {
             clearTimeout(viaTimer);
+            viaTimer = 0;
             if (row && row.dataset.via !== viaFor) showVia(row);
-        } else if (!viaCard.hidden && !viaTimer) {
-            viaTimer = setTimeout(() => { viaTimer = 0; hide(); }, 200);
+        } else {
+            later();
         }
-    });
+    }, true);
+    document.documentElement.addEventListener('pointerleave', later);
     $('people').addEventListener('scroll', hide);
     viaCard.addEventListener('click', hide);
 }
 
 function showVia(row) {
-    clearTimeout(viaTimer);
-    viaTimer = 0;
     viaFor = row.dataset.via;
     viaCard.replaceChildren(...JSON.parse(viaFor).map(l => {
         const a = document.createElement('a');
