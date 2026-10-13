@@ -1,4 +1,4 @@
-# Room protocol, version 2
+# Room protocol, version 3
 
 Anything that speaks this can join a room as a player, the web page or a native client such as a QuartzMIDI add-on.
 
@@ -67,12 +67,13 @@ Every player works the host out for itself.
 
 ### `hi`
 
-`{ name, color, tags, certs, untags }`
+`{ name, color, notes, tags, certs, untags }`
 
 Sent to each peer as it joins, and to everyone when anything in it changes.
 
 - `name` is at most 24 characters.
 - `color` is one of `#f2b84b #5ec7e8 #ef6f8e #8bd17c #b28cf2 #f58d4e #4fd1b5 #e8e15e`; a receiver shows another one when the color is taken.
+- `notes` is how everyone shows the player's notes: `null` for their color, `{ mode: "rainbow" }`, or `{ mode: "custom", white, black }` with two `#rrggbb` colors for white and black keys.
 - `tags` are the tags the player shows, at most 3, from `dev`, `trusted` and `tester`.
 - `certs` are the tag certificates that give them; a receiver reads the first 20.
 - `untags` are the newest untag certificates the player has seen, at most 50.
@@ -112,14 +113,16 @@ A tag certificate goes to its player; an untag goes to everyone.
 
 A chat message to everyone, at most 300 characters; a receiver trims it and drops it when empty.
 
-### `ev`
+### `play`
 
-`[t, status, a, b, status, a, b, ...]`
+`[t, ago, status, a, b, ago, status, a, b, ...]`
 
-`t` is the sender's monotonic clock in milliseconds, each triple one MIDI message.
+`t` is the sender's monotonic clock in milliseconds when the message is sent, and each `ago, status, a, b` is one MIDI message played `ago` milliseconds before that.
 Everything the sender played in the same moment goes as one message, and so does everything it plays within 10 ms of its last message, so a busy sender sends at most 100 a second.
-The receiver plays a message's triples together.
+The receiver plays each MIDI message at its own time, in the order they were played.
 `[t]` alone is a heartbeat, sent every second so the receiver can keep measuring the delay.
+
+Version 2 sent `ev`, `[t, status, a, b, ...]` with no `ago`; a receiver still plays it, all at once.
 
 Messages a player sends:
 

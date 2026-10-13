@@ -10,6 +10,9 @@ const LATENESS_WINDOW = 48;
 export const MAX_CHAT = 300;
 const MAX_HOLD_MS = 80;
 const BATCH_MS = 10; // a busy player's notes go out together, at most one message this often
+const KEEP_GAP_MS = 250; // notes closer than this keep their spacing when they arrive late together
+const CATCH_UP = 0.9; // a late run plays its gaps at this fraction until it is back on time
+const MAX_BEHIND_MS = 250; // a run never plays more than this past its time; beyond, its notes bunch
 const CLOSE_DELAY_MS = 1000; // a refused handshake stays open this long so the refusal arrives
 
 // Metered TURN relays, used only when two players cannot connect directly (strict NATs on some
@@ -79,12 +82,13 @@ export function connect(roomId, me, ident, since, handlers) {
 
     const room = joinRoom({ appId: APP_ID, turnConfig: TURN }, roomId, { onPeerHandshake: handshake });
     const hi = room.makeAction('hi');
-    const ev = room.makeAction('ev');
+    const ev = room.makeAction('ev'); // version 2, still heard from tabs that have not reloaded
+    const play = room.makeAction('play');
     const chat = room.makeAction('chat');
     const state = room.makeAction('room');
     const mod = room.makeAction('mod');
     const cert = room.makeAction('cert');
-    const peers = new Map(); // id -> { lateness: number[] }
+    const peers = new Map(); // id -> { lateness: number[], lastS, lastAt }
     let queue = null;
     let sentAt = -Infinity; // when the last MIDI message went out
     let flushTimer = 0;
@@ -92,7 +96,7 @@ export function connect(roomId, me, ident, since, handlers) {
     const open = () => [...peers.keys()].filter(id => !blocked.has(id));
     const from = f => (data, { peerId }) => { if (!blocked.has(peerId) && peers.has(peerId)) f(data, peerId); };
     const peer = id => {
-        if (!peers.has(id)) peers.set(id, { lateness: [] });
+        if (!peers.has(id)) peers.set(id, { lateness: [], lastS: -Infinity, lastAt: -Infinity });
         return peers.get(id);
     };
 
@@ -112,18 +116,37 @@ export function connect(roomId, me, ident, since, handlers) {
     mod.onMessage = from((data, peerId) => handlers.onMod(peerId, data));
     cert.onMessage = from((data, peerId) => handlers.onCert(peerId, data));
 
-    // Message: [sendTime, status, a, b, status, a, b, ...]. Clocks differ by an unknown offset,
-    // so each message is held until the 90th percentile of recent lateness to smooth jitter.
-    ev.onMessage = from((msg, peerId) => {
-        if (!Array.isArray(msg) || typeof msg[0] !== 'number') return;
+    // Clocks differ by an unknown offset, so each note is played at its send time plus the 90th
+    // percentile of recent lateness, which smooths jitter. Notes play in the order they were played,
+    // and notes that arrive late together keep their spacing instead of sounding at once.
+    const receive = (peerId, t, notes, step) => {
         const p = peer(peerId);
-        const late = performance.now() - msg[0];
+        const now = performance.now();
+        const late = now - t;
         p.lateness.push(late);
         if (p.lateness.length > LATENESS_WINDOW) p.lateness.shift();
         const sorted = [...p.lateness].sort((x, y) => x - y);
-        const target = sorted[Math.floor(sorted.length * 0.9)];
-        const hold = Math.min(MAX_HOLD_MS, Math.max(0, target - late));
-        for (let i = 1; i + 2 < msg.length; i += 3) handlers.onMidi(peerId, msg[i] | 0, msg[i + 1] | 0, msg[i + 2] | 0, hold);
+        const hold = Math.min(MAX_HOLD_MS, Math.max(0, sorted[Math.floor(sorted.length * 0.9)] - late));
+        for (let i = 0; i + step - 1 < notes.length; i += step) {
+            const ago = step === 4 ? Math.max(0, +notes[i] || 0) : 0;
+            const s = t - ago; // when the sender played it, on the sender's clock
+            let at = Math.max(now, now + hold - ago);
+            const gap = s - p.lastS;
+            if (gap >= 0 && gap < KEEP_GAP_MS) at = Math.max(at, Math.min(p.lastAt + gap * CATCH_UP, now + hold + MAX_BEHIND_MS));
+            at = Math.max(at, p.lastAt); // never ahead of a note played before it
+            p.lastS = Math.max(p.lastS, s);
+            p.lastAt = at;
+            const j = i + step - 3;
+            handlers.onMidi(peerId, notes[j] | 0, notes[j + 1] | 0, notes[j + 2] | 0, at - now);
+        }
+    };
+    // [sendTime, ago, status, a, b, ago, status, a, b, ...]
+    play.onMessage = from((msg, peerId) => {
+        if (Array.isArray(msg) && typeof msg[0] === 'number') receive(peerId, msg[0], msg.slice(1), 4);
+    });
+    // Version 2: [time, status, a, b, ...], all played together
+    ev.onMessage = from((msg, peerId) => {
+        if (Array.isArray(msg) && typeof msg[0] === 'number') receive(peerId, msg[0], msg.slice(1), 3);
     });
 
     chat.onMessage = from((text, peerId) => {
@@ -135,11 +158,13 @@ export function connect(roomId, me, ident, since, handlers) {
         if (target.length) action.send(data, { target });
     };
     const flush = () => {
-        everyone(ev, queue);
-        queue = null;
         sentAt = performance.now();
+        const msg = [sentAt];
+        for (const [t, status, a, b] of queue) msg.push(Math.round((sentAt - t) * 10) / 10, status, a, b);
+        everyone(play, msg);
+        queue = null;
     };
-    const beat = setInterval(() => everyone(ev, [performance.now()]), HEARTBEAT_MS);
+    const beat = setInterval(() => everyone(play, [performance.now()]), HEARTBEAT_MS);
     const pings = setInterval(() => {
         for (const id of open()) room.ping(id).then(ms => handlers.onPing(id, ms), () => {});
     }, PING_MS);
@@ -150,17 +175,18 @@ export function connect(roomId, me, ident, since, handlers) {
         /**
          * Queues a MIDI message. Messages queued in the same task are sent together, and so are those
          * within BATCH_MS of the last send, so a black MIDI does not send thousands of messages a second.
-         * The first message after a quiet spell still goes out at once.
+         * The first message after a quiet spell still goes out at once. Each note carries how long
+         * before the send it was played, so the receiver keeps the notes' spacing.
          */
         send(status, a, b) {
+            const now = performance.now();
             if (!queue) {
-                const now = performance.now();
-                queue = [now];
+                queue = [];
                 const wait = sentAt + BATCH_MS - now;
                 if (wait > 0) flushTimer = setTimeout(flush, wait);
                 else queueMicrotask(flush);
             }
-            queue.push(status, a, b);
+            queue.push([now, status, a, b]);
         },
         say(text) {
             everyone(chat, text);
