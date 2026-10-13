@@ -636,6 +636,15 @@ function bindKeyboard() {
 
 function bindMidi() {
     if (!navigator.requestMIDIAccess) return;
+    // A device that turns typing into MIDI keeps playing while the player chats or uses another
+    // window, so presses count only while the room has focus and no text field does. Releases
+    // always count, so a key held while focus moves does not stick.
+    const typing = () => {
+        const el = document.activeElement;
+        return el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && ['text', 'password', 'search'].includes(el.type));
+    };
+    const listening = () => document.hasFocus() && !typing();
+    const held = new Set(); // keys a MIDI press put down
     navigator.requestMIDIAccess().then(access => {
         const off = new Set(JSON.parse(store.get('pr-midi-off', '[]')));
         const list = () => {
@@ -646,9 +655,15 @@ function bindMidi() {
                     if (off.has(input.name)) return;
                     const [status, a = 0, b = 0] = m.data;
                     const type = status & 0xf0;
-                    if (type === 0x90 && b > 0) local(0x90, a, b);
-                    else if (type === 0x90 || type === 0x80) local(0x80, a, 0);
-                    else if (type === 0xb0 && (a === 64 || a === 66 || a === 67)) local(0xb0, a, b);
+                    if (type === 0x90 && b > 0) {
+                        if (!listening()) return;
+                        held.add(a);
+                        local(0x90, a, b);
+                    } else if (type === 0x90 || type === 0x80) {
+                        if (held.delete(a)) local(0x80, a, 0);
+                    } else if (type === 0xb0 && (a === 64 || a === 66 || a === 67)) {
+                        if (b < 64 || listening()) local(0xb0, a, b);
+                    }
                 };
                 const box = document.createElement('input');
                 box.type = 'checkbox';
