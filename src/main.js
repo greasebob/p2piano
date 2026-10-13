@@ -2,10 +2,10 @@ import './style.css';
 import {
     createIcons, createElement, Link, Check, Maximize, Minimize, Settings, LogIn, Plus, Keyboard,
     ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp, Users,
-    Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2, LogOut, Merge, X, Tag,
+    Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2, LogOut, Merge, X, Tag, FolderOpen, Pencil,
 } from 'lucide';
 import { siDiscord, siRoblox } from 'simple-icons';
-import { BANKS, loadBank, createPiano, Hand } from './audio.js';
+import { BANKS, loadBank, createPiano, Hand, keepOwnBank, ownBank, isSoundBank } from './audio.js';
 import { connect, selfId, MAX_CHAT } from './net.js';
 import { PianoView, STYLES, DEFAULT_SPEED } from './view.js';
 import { keyAction, keyLabels, noteLabels, levelVelocity, SUSTAIN_CODE, SOSTENUTO_CODE } from './keys.js';
@@ -16,7 +16,7 @@ import { Accounts, accountsOn, ACCOUNTS_KEY } from './accounts.js';
 const ICONS = {
     Link, Check, Maximize, Minimize, Settings, LogIn, Plus, Keyboard,
     ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp, Users,
-    Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2, LogOut, Merge, X, Tag,
+    Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2, LogOut, Merge, X, Tag, FolderOpen, Pencil,
 };
 const COLORS = ['#f2b84b', '#5ec7e8', '#ef6f8e', '#8bd17c', '#b28cf2', '#f58d4e', '#4fd1b5', '#e8e15e'];
 const PEER_CHANNELS = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]; // 0 is ours, 9 is drums, 15 preloads
@@ -74,6 +74,7 @@ let myHand = null;
 let loadedPiano = null;
 let transpose = 0;
 let bankJob = Promise.resolve();
+let ownBuffer = null; // the soundfont the player opened, once read
 let keyboardVelocity = 100;
 let sustain = 0; // this player's last sustain value
 const peers = new Map(); // id -> { id, info, hand, ping }
@@ -183,7 +184,7 @@ function join() {
         async onPeer(id, info) {
             const p = peer(id);
             p.sent = info;
-            p.info = { name: String(info?.name ?? 'Player').slice(0, 24), color: freeColor(id, info?.color), notes: notesOf(info?.notes), tags: p.info.tags };
+            p.info = { name: nameOf(p), color: freeColor(id, info?.color), notes: notesOf(info?.notes), tags: p.info.tags };
             for (const c of Array.isArray(info?.untags) ? info.untags.slice(0, MAX_SENT_UNTAGS) : []) if (await book.add(c)) retag();
             await checkTags(p);
             renderPeople();
@@ -214,7 +215,7 @@ function join() {
             const p = peer(id);
             if (!muteOf(p).chat) addMessage(p.info, text);
         },
-        state: () => ({ chain: room.chain ?? null, bans: bans() }),
+        state: () => ({ chain: room.chain ?? null, bans: bans(), names: names() }),
         chain: () => room.chain ?? null,
         att: () => accounts.att,
         accountOf: (att, key) => checkAtt(att, ACCOUNTS_KEY, key),
@@ -311,18 +312,56 @@ async function adoptChain(chain) {
     renderPeople();
 }
 
-/** A peer's room state: the ownership chain from anyone, the ban list from the host only. */
+/** A peer's room state: the ownership chain from anyone, the bans and names from the host only. */
 async function roomState(id, data) {
     await adoptChain(data?.chain);
-    const list = data?.bans;
-    if (!list || !Number.isInteger(list.v) || !Array.isArray(list.list) || list.v <= bans().v) return;
-    // The host's list is the room's. A host who just arrived takes the list of whoever hosted before it.
+    // The host's lists are the room's. A host who just arrived takes the lists of whoever hosted before it.
     const host = hostId();
     const others = members().filter(m => m.peerId !== selfId);
     const before = host === selfId && others.length ? hostOf(others) : null;
     if (id !== host && id !== before) return;
-    setBans(list);
-    if (host === selfId) net.shareState();
+    let changed = false;
+    const list = data?.bans;
+    if (list && Number.isInteger(list.v) && Array.isArray(list.list) && list.v > bans().v) {
+        setBans(list);
+        changed = true;
+    }
+    const given = data?.names;
+    if (given && Number.isInteger(given.v) && given.map && typeof given.map === 'object' && given.v > names().v) {
+        setNames(given);
+        changed = true;
+    }
+    if (changed && host === selfId) net.shareState();
+}
+
+// Names the host gave players in this room, by key id; everyone shows them in place of the player's own.
+const names = () => room.names ?? { v: 0, map: {} };
+const ownName = p => String(p.sent?.name ?? 'Player').slice(0, 24);
+const nameOf = p => (p.ident && names().map[p.ident.id]) || ownName(p);
+const myself = () => ({ ...me, name: names().map[ident.id] || me.name });
+
+function setNames(given) {
+    const map = {};
+    for (const [id, name] of Object.entries(given.map).slice(0, MAX_BANS)) {
+        const n = String(name ?? '').trim().slice(0, 24);
+        if (n) map[String(id).slice(0, 16)] = n;
+    }
+    room.names = { v: given.v, map };
+    saveRoom();
+    for (const p of peers.values()) if (p.sent) p.info.name = nameOf(p);
+    renderPeople();
+}
+
+/** Gives a player a name in this room; an empty one, or their own, gives them back theirs. */
+function rename(p, name) {
+    if (!amHost() || !p.ident || p.ident.key === ownerKey) return;
+    const map = { ...names().map };
+    const n = name.trim().slice(0, 24);
+    if (!n || n === ownName(p)) delete map[p.ident.id];
+    else map[p.ident.id] = n;
+    if (map[p.ident.id] === names().map[p.ident.id]) return;
+    setNames({ v: names().v + 1, map });
+    net.shareState();
 }
 
 function setBans(list) {
@@ -386,8 +425,9 @@ function setRoomPassword(pass) {
 }
 
 async function start() {
+    const buffer = await fetchBank($('piano').value);
     const id = $('piano').value;
-    piano = await createPiano(ctx, await fetchBank(id), BANKS[id], preloadProgress);
+    piano = await createPiano(ctx, buffer, BANKS[id], preloadProgress);
     loadedPiano = id;
     piano.setVolume(+$('volume').value / 100);
     piano.setReverb(+$('reverb').value);
@@ -399,8 +439,15 @@ async function start() {
     if (ctx.state !== 'running') await ctx.resume();
 }
 
-function fetchBank(id) {
+async function fetchBank(id) {
     setStatus('Piano', false, 0);
+    if (id === 'own') {
+        ownBuffer ??= await ownBank();
+        if (ownBuffer) return ownBuffer.slice(0); // the synth takes the copy it is given
+        $('piano').value = 'salamander-8'; // the saved file is gone
+        store.set('pr-piano', 'salamander-8');
+        id = 'salamander-8';
+    }
     return loadBank(BANKS[id].url, f => setStatus('Piano', false, f * 0.8));
 }
 
@@ -429,6 +476,7 @@ function setTranspose(value) {
     const text = transpose > 0 ? `+${transpose}` : String(transpose);
     $('transpose').textContent = text;
     $('transpose').setAttribute('aria-label', `Transpose ${text}, reset`);
+    store.set('pr-transpose', String(transpose));
     if ($('labels').value === 'qwerty') view.setLabels(keyLabels(transpose));
 }
 
@@ -549,6 +597,7 @@ function bindKeyboard() {
     const pedalCC = code => (code === SUSTAIN_CODE ? 64 : 66);
     const inverted = code => code === SUSTAIN_CODE && $('sus-invert').ariaPressed === 'true';
     const pedal = (code, down) => local(0xb0, pedalCC(code), down !== inverted(code) ? 127 : 0);
+    keyboardVelocity = Math.max(1, Math.min(127, +store.get('pr-velocity', '100') || 100));
     $('vel-key').textContent = keyboardVelocity;
 
     // Inverted sustain holds the pedal down while Space is up.
@@ -601,6 +650,7 @@ function bindKeyboard() {
         if ('level' in action) {
             keyboardVelocity = levelVelocity(action.level);
             $('vel-key').textContent = keyboardVelocity;
+            store.set('pr-velocity', String(keyboardVelocity));
             return;
         }
         const note = action.note + transpose;
@@ -796,9 +846,31 @@ function bindControls() {
         button.addEventListener('click', () => setTranspose(transpose + Number(button.dataset.transpose)));
     }
     $('transpose').addEventListener('click', () => setTranspose(0));
+    setTranspose(+store.get('pr-transpose', '0') || 0);
 
+    const ownName = store.get('pr-own-name', '');
+    $('own-piano').textContent = ownName;
+    $('own-piano').hidden = !ownName;
     const savedPiano = store.get('pr-piano', 'salamander-8');
-    $('piano').value = savedPiano in BANKS ? savedPiano : 'salamander-8';
+    $('piano').value = savedPiano in BANKS && (savedPiano !== 'own' || ownName) ? savedPiano : 'salamander-8';
+    $('open-piano').addEventListener('click', () => $('piano-file').click());
+    $('piano-file').addEventListener('change', async () => {
+        const file = $('piano-file').files[0];
+        $('piano-file').value = '';
+        if (!file) return;
+        const buffer = await file.arrayBuffer();
+        if (!isSoundBank(buffer)) return showError(new Error(`${file.name} is not a soundfont`));
+        ownBuffer = buffer;
+        const name = file.name.replace(/\.(sf2|sf3|dls)$/i, '');
+        $('own-piano').textContent = name;
+        $('own-piano').hidden = false;
+        $('piano').value = 'own';
+        store.set('pr-piano', 'own');
+        // Kept for the next visit when it fits; otherwise it lasts until the page closes
+        store.set('pr-own-name', (await keepOwnBank(buffer)) ? name : '');
+        if (loadedPiano === 'own') loadedPiano = null; // a new file in place of the one playing
+        changePiano();
+    });
     $('piano').addEventListener('change', () => {
         store.set('pr-piano', $('piano').value);
         changePiano();
@@ -840,7 +912,7 @@ function bindChat() {
         input.blur();
         if (!text) return;
         net.say(text);
-        addMessage(me, text);
+        addMessage(myself(), text);
     });
     input.addEventListener('keydown', e => {
         if (e.code === 'Escape') input.blur();
@@ -923,7 +995,7 @@ function renderPeople() {
         li.append(body);
         ul.append(li);
     };
-    row(selfId, me, null, null);
+    row(selfId, myself(), null, null);
     for (const p of peers.values()) row(p.id, p.info, p.ping, p);
     $('people-count').textContent = peers.size + 1;
     renderRoomSettings();
@@ -975,6 +1047,19 @@ function bindPlayerMenu() {
     });
     confirmed('pm-ban', ban);
     confirmed('pm-host', makeHost);
+    // Enter or leaving the field renames; Escape puts the name back
+    const renameNow = () => {
+        const p = current();
+        if (p) rename(p, $('pm-rename').value);
+    };
+    $('pm-rename').addEventListener('change', renameNow);
+    $('pm-rename').addEventListener('keydown', e => {
+        if (e.key === 'Enter') $('pm-rename').blur();
+        if (e.key === 'Escape') {
+            const p = current();
+            if (p) $('pm-rename').value = p.info.name;
+        }
+    });
 }
 
 function disarm(b) {
@@ -1004,6 +1089,11 @@ function openPlayerMenu(p, anchor) {
     menuPeer = p.id;
     $('pm-name').textContent = p.info.name;
     $('pm-name').style.setProperty('--c', p.info.color);
+    const renames = amHost() && !!p.ident && p.ident.key !== ownerKey;
+    $('pm-name').hidden = renames;
+    $('pm-rename-box').hidden = !renames;
+    $('pm-rename').value = p.info.name;
+    $('pm-rename').style.setProperty('--c', p.info.color);
     const m = muteOf(p);
     $('pm-volume').value = m.vol ?? 100;
     $('pm-volume-val').value = `${$('pm-volume').value}%`;

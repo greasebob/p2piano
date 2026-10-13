@@ -82,11 +82,12 @@ A receiver shows a tag only when the player shows it and a certificate gives it 
 
 ### `room`
 
-`{ chain, bans }`
+`{ chain, bans, names }`
 
-Sent to each peer as it joins, and to everyone when the ownership or the bans change.
+Sent to each peer as it joins, and to everyone when the ownership, the bans or the names change.
 
 - `bans` is `{ v, list: [{ id, acct?, name }, ...] }`, at most 500 bans. `id` is a key id and `acct` an account id.
+- `names` is `{ v, map: { keyId: name } }`, the names the host gave players in this room, each at most 24 characters. Everyone shows a player by the name given to their key id in place of their own.
 - A receiver takes a list only from the host, with a higher `v` than its own.
 - A host who just arrived takes the list of whoever hosted before it.
 

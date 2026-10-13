@@ -10,6 +10,9 @@ export const BANKS = {
     'salamander-16': { url: `${SOUNDFONTS}/salamander-grand-16-v1.sf3`, strikes: [13, 30, 35, 40, 45, 48, 53, 60, 68, 76, 84, 92, 100, 108, 116, 124] },
     'amethyst-studio': { url: `${SOUNDFONTS}/amethyst-studio-v1.sf3`, strikes: [100], level: -2 },
     'amethyst-hall': { url: `${SOUNDFONTS}/amethyst-hall-v1.sf3`, strikes: [100], level: -4.5 },
+    // A soundfont the player opened from their own computer. It stays in this browser and is never sent.
+    // Its layers are unknown, so the preload strikes a spread of velocities.
+    own: { url: `${SOUNDFONTS}/own`, strikes: [8, 24, 40, 56, 72, 88, 104, 120] },
 };
 const CACHE = 'piano-room-banks-v1';
 const PRELOAD_CHANNEL = 15;
@@ -52,6 +55,33 @@ export async function loadBank(url, onProgress) {
     }
     onProgress(1);
     return await blob.arrayBuffer();
+}
+
+/** Keeps the player's own soundfont in Cache Storage for their next visit; returns false when it does not fit. */
+export async function keepOwnBank(buffer) {
+    try {
+        const cache = await caches.open(CACHE);
+        await cache.put(BANKS.own.url, new Response(buffer, { headers: { 'content-type': 'application/octet-stream' } }));
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/** The player's own soundfont from Cache Storage, or null. */
+export async function ownBank() {
+    try {
+        const hit = await (await caches.open(CACHE)).match(BANKS.own.url);
+        return hit ? await hit.arrayBuffer() : null;
+    } catch {
+        return null;
+    }
+}
+
+/** Whether the bytes start as an SF2, SF3 or DLS file. */
+export function isSoundBank(buffer) {
+    const tag = (at) => String.fromCharCode(...new Uint8Array(buffer, at, 4));
+    return buffer.byteLength > 12 && tag(0) === 'RIFF' && ['sfbk', 'DLS '].includes(tag(8));
 }
 
 /**
