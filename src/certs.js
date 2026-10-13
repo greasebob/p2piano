@@ -24,16 +24,22 @@ export const GIVEN = ['trusted', 'tester'];
 const MAX_UNTAGS = 500;
 
 export const tagText = (kind, tag, sub, n) => `p2piano|${kind}|${tag}|${sub}|${n}`;
-export const attText = (ids, key, exp) => `p2piano|att|${ids.join(',')}|${key}|${exp}`;
+// via lists the account's logins, { p: provider, id: that provider's user id, n: its name }, so players can show them.
+export const attText = (ids, key, exp, via) => `p2piano|att|${ids.join(',')}|${key}|${exp}`
+    + (via?.length ? `|via:${via.map(l => `${l.p}=${l.id}=${encodeURIComponent(l.n)}`).join(',')}` : '');
 const SUB = /^[ka]:[\w-]{1,32}$/;
+export const MAX_VIA = 4;
+const goodVia = via => via === undefined || (Array.isArray(via) && via.length <= MAX_VIA
+    && via.every(l => l && /^[a-z]{1,16}$/.test(l.p) && typeof l.id === 'string' && /^\d{1,24}$/.test(l.id)
+        && typeof l.n === 'string' && l.n.length <= 40));
 
 /** The account ids an attestation puts `key` in, its own first, or null. Leave `now` null to accept an expired one. */
 export async function checkAtt(att, accountsKey, key = null, now = Date.now()) {
     if (!accountsKey || !att || !Array.isArray(att.ids) || !att.ids.length || att.ids.length > 20 || !att.ids.every(i => typeof i === 'string' && /^[\w-]{1,32}$/.test(i))) return null;
-    if (typeof att.key !== 'string' || typeof att.sig !== 'string' || !Number.isSafeInteger(att.exp)) return null;
+    if (typeof att.key !== 'string' || typeof att.sig !== 'string' || !Number.isSafeInteger(att.exp) || !goodVia(att.via)) return null;
     if (key !== null && att.key !== key) return null;
     if (now !== null && att.exp < now) return null;
-    return await verify(accountsKey, att.sig, attText(att.ids, att.key, att.exp)) ? att.ids : null;
+    return await verify(accountsKey, att.sig, attText(att.ids, att.key, att.exp, att.via)) ? att.ids : null;
 }
 
 function wellFormed(cert) {

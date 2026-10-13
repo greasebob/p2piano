@@ -120,9 +120,10 @@ export class PianoView {
         this.trails = [];
         this.bloom = document.createElement('canvas');
         this.style = 'glow';
-        this.glow = 0.5;
+        this.glow = 0.5; // the brighter of the two, for the bloom
+        this.glows = [0.5, 0.5]; // white keys, black keys
         this.speed = DEFAULT_SPEED;
-        this.lights = new Map(); // color -> color at the current brightness
+        this.lights = [new Map(), new Map()]; // white keys, black keys: color -> color at their brightness
         for (let n = LOW; n <= HIGH; n++) {
             const el = document.createElement('div');
             const box = BOXES.get(n);
@@ -219,12 +220,18 @@ export class PianoView {
         this.speed = pxPerS;
     }
 
-    /** Sets the brightness of the notes and lit keys, 0 to 1. */
-    setBrightness(v) {
-        this.glow = v;
-        this.lights.clear();
-        this.root.style.setProperty('--glow', String(v));
+    /** Sets the brightness of the notes and lit keys, 0 to 1, of white keys and of black keys. */
+    setBrightness(white, black = white) {
+        this.glows = [white, black];
+        this.glow = Math.max(white, black);
+        for (const lit of this.lights) lit.clear();
+        this.root.style.setProperty('--glow-white', String(white));
+        this.root.style.setProperty('--glow-black', String(black));
         for (const [note, list] of this.held) this.paint(note, list[list.length - 1]);
+    }
+
+    glowOf(note) {
+        return this.glows[isBlack(note) ? 1 : 0];
     }
 
     /**
@@ -234,8 +241,10 @@ export class PianoView {
     colorOf(note, look) {
         const n = look.notes;
         const color = n?.mode === 'rainbow' ? RAINBOW.get(note) : n?.mode === 'custom' ? (isBlack(note) ? n.black : n.white) : look.color;
-        if (!this.lights.has(color)) this.lights.set(color, light(color, this.glow));
-        return this.lights.get(color);
+        const black = isBlack(note);
+        const lit = black ? this.lights[1] : this.lights[0];
+        if (!lit.has(color)) lit.set(color, light(color, this.glows[black ? 1 : 0]));
+        return lit.get(color);
     }
 
     bindPointer(keysEl, onPress) {
@@ -397,8 +406,8 @@ export class PianoView {
     drawBloom(g, dpr) {
         const k = this.glow / 0.5;
         let strength = k <= 1 ? 0.6 * k ** 3 : 0.6 + 1.4 * (k - 1);
-        if (strength < 0.01) return;
         const src = this.canvas, b = this.bloom;
+        if (strength < 0.01 || !src.width || !src.height) return; // a hidden stage has no size to blur
         const bg = b.getContext('2d');
         const filtered = 'filter' in bg;
         const down = filtered ? BLOOM_SCALE : BLOOM_SCALE * 4; // without a blur filter, a coarser copy stands in for it
@@ -433,7 +442,7 @@ export class PianoView {
         for (const [note, { level, look }] of lit) {
             const box = BOXES.get(note);
             const r = box.w * zoom * w * 1.6;
-            g.globalAlpha = level * this.glow;
+            g.globalAlpha = level * this.glowOf(note);
             g.drawImage(sprite(this.colorOf(note, look)), (box.x + box.w / 2 - off) * zoom * w - r, h - r, 2 * r, 2 * r);
         }
     }

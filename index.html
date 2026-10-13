@@ -80,7 +80,8 @@
             <option value="pfa">PFA</option>
             <option value="flat">Flat</option>
         </select></label>
-        <label><span>Brightness <output id="brightness-val" for="brightness"></output></span><input id="brightness" type="range" min="0" max="100"></label>
+        <label><span>Brightness, white keys <output id="brightness-val" for="brightness"></output></span><input id="brightness" type="range" min="0" max="100"></label>
+        <label><span>Brightness, black keys <output id="brightness-black-val" for="brightness-black"></output></span><input id="brightness-black" type="range" min="0" max="100"></label>
         <label><span>Note speed <output id="speed-val" for="speed"></output></span><input id="speed" type="range" min="60" max="800" step="10"></label>
         <label>Note colors <select id="colors">
             <option value="player">Player</option>
@@ -88,8 +89,8 @@
             <option value="custom">Custom</option>
         </select></label>
         <div id="custom-colors" class="swatches" hidden>
-            <label><input id="white-color" type="color" value="#14e0b0"> White keys</label>
-            <label><input id="black-color" type="color" value="#ff1a8c"> Black keys</label>
+            <label><input id="white-color" type="hidden" value="#14e0b0"> White keys</label>
+            <label><input id="black-color" type="hidden" value="#ff1a8c"> Black keys</label>
         </div>
         <label>Key labels <select id="labels"><option value="qwerty">QWERTY</option><option value="notes">Notes</option></select></label>
         </div>
@@ -125,7 +126,10 @@
         <ul id="people" aria-live="polite"></ul>
         <form id="chat">
             <ol id="messages" aria-label="Chat" aria-live="polite"></ol>
-            <input id="chat-input" placeholder="Message (/ or Enter)" aria-label="Message" autocomplete="off" enterkeyhint="send">
+            <div class="chat-row">
+                <input id="chat-input" placeholder="Message (/ or Enter)" aria-label="Message" autocomplete="off" enterkeyhint="send">
+                <button id="emoji-open" type="button" class="icon" aria-label="Emoji" title="Emoji"><i data-lucide="smile"></i></button>
+            </div>
         </form>
     </aside>
 

@@ -2,7 +2,8 @@ import './style.css';
 import {
     createIcons, createElement, Link, Check, Maximize, Minimize, Settings, LogIn, Plus, Keyboard,
     ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp, Users,
-    Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2, LogOut, Merge, X, Tag, FolderOpen, Pencil,
+    Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2, LogOut, Merge, X, Tag, FolderOpen, Pencil, Piano,
+    Smile,
 } from 'lucide';
 import { siDiscord, siRoblox } from 'simple-icons';
 import { BANKS, loadBank, createPiano, Hand, keepOwnBank, ownBank, isSoundBank } from './audio.js';
@@ -12,15 +13,19 @@ import { keyAction, keyLabels, noteLabels, levelVelocity, SUSTAIN_CODE, SOSTENUT
 import { loadIdentity, importIdentity, roomCode, newSalt, chainOwner, handoverText } from './identity.js';
 import { TAGS, GIVEN, ROOT_ID, TagBook, checkAtt, makeCert } from './certs.js';
 import { Accounts, accountsOn, ACCOUNTS_KEY } from './accounts.js';
+import { colorWheel } from './wheel.js';
+import { bindEmoji } from './emoji.js';
 
 const ICONS = {
     Link, Check, Maximize, Minimize, Settings, LogIn, Plus, Keyboard,
     ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp, Users,
-    Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2, LogOut, Merge, X, Tag, FolderOpen, Pencil,
+    Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2, LogOut, Merge, X, Tag, FolderOpen, Pencil, Piano,
+    Smile,
 };
 const COLORS = ['#f2b84b', '#5ec7e8', '#ef6f8e', '#8bd17c', '#b28cf2', '#f58d4e', '#4fd1b5', '#e8e15e'];
 const PEER_CHANNELS = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]; // 0 is ours, 9 is drums, 15 preloads
 const MAX_TRANSPOSE = 24;
+const MAX_SF_NAME = 40;
 const BRANDS = { discord: siDiscord, roblox: siRoblox };
 const MAX_SHOWN_TAGS = 3;
 const MAX_SENT_UNTAGS = 50;
@@ -184,7 +189,10 @@ function join() {
         async onPeer(id, info) {
             const p = peer(id);
             p.sent = info;
-            p.info = { name: nameOf(p), color: freeColor(id, info?.color), notes: notesOf(info?.notes), tags: p.info.tags };
+            p.info = {
+                name: nameOf(p), color: freeColor(id, info?.color), notes: notesOf(info?.notes), tags: p.info.tags,
+                sf: typeof info?.sf === 'string' ? info.sf.slice(0, MAX_SF_NAME) : null,
+            };
             for (const c of Array.isArray(info?.untags) ? info.untags.slice(0, MAX_SENT_UNTAGS) : []) if (await book.add(c)) retag();
             await checkTags(p);
             renderPeople();
@@ -429,6 +437,7 @@ async function start() {
     const id = $('piano').value;
     piano = await createPiano(ctx, buffer, BANKS[id], preloadProgress);
     loadedPiano = id;
+    sharePiano();
     piano.setVolume(+$('volume').value / 100);
     piano.setReverb(+$('reverb').value);
     myHand = new Hand(piano.synth, 0, (note, vel) => view.key(selfId, note, vel, me));
@@ -464,10 +473,21 @@ function changePiano() {
         if ($('piano').value === id) {
             await piano.setBank(bank, BANKS[id], preloadProgress);
             loadedPiano = id;
+            sharePiano();
         }
         setStatus(null);
         changePiano(); // applies a change made while loading
     }).catch(showError);
+}
+
+/** Tells the room the name of a soundfont opened from this computer, or that none is playing. */
+function sharePiano() {
+    const sf = loadedPiano === 'own' ? $('own-piano').textContent.slice(0, MAX_SF_NAME) : undefined;
+    if (me.sf === sf) return;
+    if (sf) me.sf = sf;
+    else delete me.sf;
+    net?.setMe(me);
+    renderPeople();
 }
 
 /** Shifts the computer keyboard's notes by `value` semitones. */
@@ -805,8 +825,9 @@ function bindControls() {
         piano?.setReverb(+$('reverb').value);
     });
     $('brightness').value = store.get('pr-brightness', '50');
+    $('brightness-black').value = store.get('pr-brightness-black', $('brightness').value);
     $('speed').value = store.get('pr-speed', String(DEFAULT_SPEED));
-    for (const id of ['volume', 'reverb', 'brightness', 'speed']) {
+    for (const id of ['volume', 'reverb', 'brightness', 'brightness-black', 'speed']) {
         const show = () => { $(`${id}-val`).value = $(id).value; };
         $(id).addEventListener('input', show);
         show();
@@ -814,12 +835,15 @@ function bindControls() {
     $('style').value = STYLES.includes(store.get('pr-style', 'glow')) ? store.get('pr-style', 'glow') : 'glow';
     const savedColors = store.get('pr-colors', 'player');
     $('colors').value = ['rainbow', 'custom'].includes(savedColors) ? savedColors : 'player';
-    for (const id of ['white-color', 'black-color']) $(id).value = store.get(`pr-${id}`, $(id).value);
+    for (const id of ['white-color', 'black-color']) {
+        $(id).value = store.get(`pr-${id}`, $(id).value);
+        colorWheel($(id));
+    }
     const showStyle = () => {
         const mode = $('colors').value;
         $('custom-colors').hidden = mode !== 'custom';
         view.setStyle($('style').value);
-        view.setBrightness(+$('brightness').value / 100);
+        view.setBrightness(+$('brightness').value / 100, +$('brightness-black').value / 100);
         view.setSpeed(+$('speed').value);
         // Note colours are the player's own: everyone sees this player's notes in them
         const was = JSON.stringify(me.notes);
@@ -830,7 +854,7 @@ function bindControls() {
         notesTimer = setTimeout(() => net?.setMe(me), 300); // a colour being dragged sends once it rests
     };
     let notesTimer = 0;
-    for (const id of ['style', 'colors', 'white-color', 'black-color', 'brightness', 'speed']) {
+    for (const id of ['style', 'colors', 'white-color', 'black-color', 'brightness', 'brightness-black', 'speed']) {
         $(id).addEventListener(id === 'style' || id === 'colors' ? 'change' : 'input', () => {
             store.set(`pr-${id}`, $(id).value);
             showStyle();
@@ -904,6 +928,8 @@ function restSidebar() {
 function bindChat() {
     const input = $('chat-input');
     input.maxLength = MAX_CHAT;
+    // Bound first: while its :shortcode list or picker is open, Enter and Escape are its own.
+    bindEmoji(input, $('emoji-open'), $('players'), MAX_CHAT);
     // Enter sends and Escape leaves, so the keys go back to the piano either way.
     $('chat').addEventListener('submit', e => {
         e.preventDefault();
@@ -961,6 +987,32 @@ function tagPill(tag) {
     return pill;
 }
 
+const PROFILES = {
+    discord: id => `https://discord.com/users/${id}`,
+    roblox: id => `https://www.roblox.com/users/${id}/profile`,
+};
+
+/** A signed-in player's logins as logos; a click opens that profile. The row is a button, so these are not links. */
+function profiles(via) {
+    const box = document.createElement('span');
+    box.className = 'via';
+    for (const l of via ?? []) {
+        if (!PROFILES[l.p]) continue;
+        const logo = brand(l.p);
+        logo.setAttribute('role', 'link');
+        logo.dataset.href = PROFILES[l.p](l.id);
+        const title = document.createElementNS(SVG, 'title');
+        title.textContent = l.n ? `${PROVIDER_NAMES[l.p]}: ${l.n}` : PROVIDER_NAMES[l.p];
+        logo.prepend(title);
+        logo.addEventListener('click', e => {
+            e.stopPropagation();
+            open(logo.dataset.href, '_blank', 'noopener,noreferrer');
+        });
+        box.append(logo);
+    }
+    return box;
+}
+
 function renderPeople() {
     if (!ident) return;
     const ul = $('people');
@@ -981,8 +1033,15 @@ function renderPeople() {
         const name = document.createElement('span');
         name.className = 'name';
         name.textContent = info.name;
-        body.append(name);
+        body.append(name, profiles(p ? p.ident?.via : accounts.att?.via));
         for (const t of info.tags ?? []) body.append(tagPill(t));
+        if (info.sf) {
+            const sf = icon(Piano, 'piano', info.sf);
+            const title = document.createElementNS(SVG, 'title');
+            title.textContent = info.sf;
+            sf.prepend(title);
+            body.append(sf);
+        }
         if (id === host) body.append(icon(Crown, 'crown', 'Host'));
         const m = p ? muteOf(p) : {};
         if (m.play) body.append(icon(VolumeX, 'volume-x', 'Muted'));

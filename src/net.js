@@ -62,7 +62,8 @@ export function connect(roomId, me, ident, since, handlers) {
         const { data } = await receive();
         if (!data || typeof data.key !== 'string' || typeof data.sig !== 'string' || !Number.isFinite(data.since) || typeof data.nonce !== 'string') throw new Error('no identity');
         if (!await verify(data.key, data.sig, helloText(roomId, peerId, selfId))) throw new Error('identity not proven');
-        const them = { key: data.key, id: await keyId(data.key), since: data.since, ids: await handlers.accountOf(data.att, data.key) };
+        const ids = await handlers.accountOf(data.att, data.key);
+        const them = { key: data.key, id: await keyId(data.key), since: data.since, ids, via: ids ? data.att.via ?? [] : [] };
         await handlers.offerChain(data.chain);
         const refusal = blocked.has(peerId) ? 'kick' : handlers.refuse(peerId, them);
         await send({ proof: await passProof(roomId, data.nonce, handlers.password()), ...refusal ? { refuse: refusal } : {} });

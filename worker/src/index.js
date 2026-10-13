@@ -12,7 +12,7 @@
 //   FAKE_LOGIN      '1' only for local tests: a 'fake' provider that signs in whoever is named
 
 import { b64, verify } from '../../src/identity.js';
-import { attText, checkCert } from '../../src/certs.js';
+import { attText, checkCert, MAX_VIA } from '../../src/certs.js';
 
 const DAY = 86400e3;
 const ATT_MS = DAY;
@@ -392,11 +392,13 @@ async function attest(env, acct, data) {
     const old = (await db.prepare('SELECT old FROM aliases WHERE account = ? LIMIT 19').bind(acct).all()).results.map(r => r.old);
     const ids = [acct, ...old];
     const exp = Date.now() + ATT_MS;
+    const via = (await db.prepare('SELECT provider AS p, sub AS id, name AS n FROM logins WHERE account = ? ORDER BY provider, sub LIMIT ?').bind(acct, MAX_VIA).all())
+        .results.filter(l => /^\d{1,24}$/.test(l.id)).map(l => ({ ...l, n: String(l.n ?? '').slice(0, 40) }));
     const priv = await crypto.subtle.importKey('jwk', JSON.parse(env.ATTEST_KEY), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
-    const attSig = b64(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, priv, enc.encode(attText(ids, key, exp))));
+    const attSig = b64(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, priv, enc.encode(attText(ids, key, exp, via))));
     const certs = (await db.prepare('SELECT cert FROM certs WHERE account = ?').bind(acct).all()).results.map(r => JSON.parse(r.cert));
     const untags = (await db.prepare('SELECT cert FROM untags ORDER BY n DESC LIMIT ?').bind(MAX_UNTAGS).all()).results.map(r => JSON.parse(r.cert));
-    return json({ att: { ids, key, exp, sig: attSig }, certs, untags });
+    return json({ att: { ids, key, exp, ...via.length ? { via } : {}, sig: attSig }, certs, untags });
 }
 
 /** Keeps a tag certificate for an account, or takes tags back with an untag. Anyone may hand one in: they are signed. */
