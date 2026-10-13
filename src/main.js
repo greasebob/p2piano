@@ -174,6 +174,7 @@ async function enter() {
     bindControls();
     bindPlayerMenu();
     bindViaCard();
+    bindCursors();
     bindRoomSettings();
     $('settings').addEventListener('toggle', e => {
         if (e.newState === 'open' && accounts.signedIn) accounts.refresh().catch(() => {}).then(() => renderAccount($('account')));
@@ -223,6 +224,10 @@ function join() {
         onChat(id, text) {
             const p = peer(id);
             if (!muteOf(p).chat) addMessage(p.info, text);
+        },
+        onCursor(id, pos) {
+            const p = peers.get(id);
+            if (p) showCursor(p, muteOf(p).play ? null : pos);
         },
         state: () => ({ chain: room.chain ?? null, bans: bans(), names: names() }),
         chain: () => room.chain ?? null,
@@ -520,6 +525,7 @@ function forget(id) {
     if (!p) return;
     p.hand?.release();
     view.clear(id);
+    showCursor(p, null);
     peers.delete(id);
     if (menuPeer === id) $('player-menu').hidePopover();
     renderPeople();
@@ -562,6 +568,7 @@ function setMute(p, change) {
     if ('play' in change && m.play) {
         p.hand?.release();
         view.clear(p.id);
+        showCursor(p, null);
     }
     applyVolume(p);
     renderPeople();
@@ -1024,6 +1031,65 @@ function bindViaCard() {
     document.documentElement.addEventListener('pointerleave', later);
     $('people').addEventListener('scroll', hide);
     viaCard.addEventListener('click', hide);
+}
+
+// Everyone's pointer shows to the others as an arrow in their colour with their name, placed by
+// fractions of the room so it points at about the same spot on another screen size.
+const CURSOR_MS = 50; // at most this often
+const CURSOR_PATH = 'M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z';
+
+function bindCursors() {
+    let pending = null;
+    let sent = 'null';
+    let last = 0;
+    let timer = 0;
+    const flush = () => {
+        timer = 0;
+        last = performance.now();
+        if (JSON.stringify(pending) === sent) return;
+        sent = JSON.stringify(pending);
+        net?.cursor(pending);
+    };
+    const send = pos => {
+        pending = pos;
+        const wait = last + CURSOR_MS - performance.now();
+        if (wait <= 0) flush();
+        else timer ||= setTimeout(flush, wait);
+    };
+    const frac = v => Math.round(v * 1e4) / 1e4;
+    window.addEventListener('pointermove', e => {
+        if (e.pointerType === 'touch') return;
+        const r = $('room').getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width;
+        const y = (e.clientY - r.top) / r.height;
+        send(x >= 0 && x <= 1 && y >= 0 && y <= 1 ? [frac(x), frac(y)] : null);
+    }, true);
+    document.documentElement.addEventListener('pointerleave', () => send(null));
+    window.addEventListener('blur', () => send(null));
+}
+
+/** Moves a player's arrow to `pos`, or takes it away for null. */
+function showCursor(p, pos) {
+    clearTimeout(p.cursorTimer);
+    if (!pos) {
+        p.cursor?.remove();
+        p.cursor = null;
+        return;
+    }
+    if (!p.cursor) {
+        p.cursor = document.createElement('div');
+        p.cursor.className = 'cursor';
+        p.cursor.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${CURSOR_PATH}"/></svg><span></span>`;
+    }
+    const label = p.cursor.querySelector('span');
+    if (label.textContent !== p.info.name) label.textContent = p.info.name;
+    p.cursor.style.setProperty('--c', p.info.color);
+    p.cursor.style.left = `${pos[0] * 100}%`;
+    p.cursor.style.top = `${pos[1] * 100}%`;
+    p.cursor.classList.remove('idle');
+    if (!p.cursor.isConnected) $('cursors').append(p.cursor);
+    // A pointer left still fades, as the sidebar does
+    p.cursorTimer = setTimeout(() => p.cursor?.classList.add('idle'), SIDEBAR_IDLE_MS);
 }
 
 function showVia(row) {

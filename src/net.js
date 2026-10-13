@@ -43,7 +43,7 @@ async function passProof(roomId, nonce, password) {
  * Joins a room. `ident` is this browser's identity, `since` when this player entered the room.
  * handlers:
  *   onPeer(id, info), onLeave(id), onMidi(id, status, a, b, holdMs), onPing(id, ms), onChat(id, text),
- *   onRoom(id, state), onMod(id, msg), onCert(id, cert),
+ *   onRoom(id, state), onMod(id, msg), onCert(id, cert), onCursor(id, [x, y] or null),
  *   chain() the ownership chain to hand on, offerChain(chain) one a peer handed on,
  *   att() this player's account attestation or null, accountOf(att, key) the account ids a peer's proves or null,
  *   refuse(id, them) 'ban', 'kick' or null for a peer about to join,
@@ -89,6 +89,7 @@ export function connect(roomId, me, ident, since, handlers) {
     const state = room.makeAction('room');
     const mod = room.makeAction('mod');
     const cert = room.makeAction('cert');
+    const cur = room.makeAction('cur');
     const peers = new Map(); // id -> { lateness: number[], lastS, lastAt }
     let queue = null;
     let sentAt = -Infinity; // when the last MIDI message went out
@@ -116,6 +117,10 @@ export function connect(roomId, me, ident, since, handlers) {
     state.onMessage = from((data, peerId) => handlers.onRoom(peerId, data));
     mod.onMessage = from((data, peerId) => handlers.onMod(peerId, data));
     cert.onMessage = from((data, peerId) => handlers.onCert(peerId, data));
+    cur.onMessage = from((pos, peerId) => {
+        if (pos === null) handlers.onCursor(peerId, null);
+        else if (Array.isArray(pos) && pos.length === 2 && pos.every(v => typeof v === 'number' && v >= 0 && v <= 1)) handlers.onCursor(peerId, pos);
+    });
 
     // Clocks differ by an unknown offset, so each note is played at its send time plus the 90th
     // percentile of recent lateness, which smooths jitter. Notes play in the order they were played,
@@ -209,6 +214,10 @@ export function connect(roomId, me, ident, since, handlers) {
         cert(data, target = null) {
             if (target) cert.send(data, { target });
             else everyone(cert, data);
+        },
+        /** Sends where this player's pointer is, as fractions of the room, or null once it has left. */
+        cursor(pos) {
+            everyone(cur, pos);
         },
         /** Stops talking to a peer; it is refused if it connects again. */
         block(id) {

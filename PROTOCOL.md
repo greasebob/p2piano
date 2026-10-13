@@ -114,6 +114,13 @@ A tag certificate goes to its player; an untag goes to everyone.
 
 A chat message to everyone, at most 300 characters; a receiver trims it and drops it when empty.
 
+### `cur`
+
+`[x, y]` or `null`
+
+Where the player's pointer is, as fractions 0-1 of the room's width and height, sent at most every 50 ms while it moves; `null` once it leaves the room or the window.
+The receiver shows it in the player's colour with their name, and fades it after 6 s without a move.
+
 ### `play`
 
 `[t, ago, status, a, b, ago, status, a, b, ...]`

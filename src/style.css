@@ -151,7 +151,7 @@ input:not([type]):focus, input[type=text]:focus { border-color: var(--accent); o
 
 /* Room */
 #room {
-    height: 100%; display: grid; background: var(--bg); color: var(--text);
+    position: relative; height: 100%; display: grid; background: var(--bg); color: var(--text);
     grid-template-rows: auto minmax(0, 1fr) auto minmax(120px, 24vh);
     grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
     grid-template-areas: "head head" "stage stage" "map map" "keys keys";
@@ -161,6 +161,17 @@ header { grid-area: head; }
 #stage { grid-area: stage; }
 #map { grid-area: map; }
 #keys { grid-area: keys; }
+#cursors { position: absolute; inset: 0; z-index: 30; overflow: hidden; pointer-events: none; }
+.cursor { position: absolute; transition: left .08s linear, top .08s linear, opacity .4s; }
+.cursor.idle { opacity: 0; }
+.cursor svg {
+    display: block; width: 20px; height: 20px; margin: -3px 0 0 -3px;
+    fill: var(--c); stroke: rgb(0 0 0 / .55); stroke-width: 1.5; stroke-linejoin: round;
+}
+.cursor span {
+    position: absolute; left: 14px; top: 16px; padding: 1px 6px; border-radius: 6px; white-space: nowrap;
+    background: var(--c); color: #0d0b14; font-size: 11px; font-weight: 600; line-height: 16px;
+}
 header {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--bg);
