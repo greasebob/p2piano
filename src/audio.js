@@ -1,13 +1,15 @@
 import { WorkletSynthesizer } from 'spessasynth_lib';
 import processorUrl from 'spessasynth_lib/dist/spessasynth_processor.min.js?url';
+import limiterUrl from './limiter.worklet.js?url&no-inline';
 
 // Selectable pianos. `strikes` has one velocity per sample layer, used to preload samples.
+// `level` in dB evens out how loud they are, so the louder Amethyst banks do not drive the limiter hard.
 const SOUNDFONTS = `${import.meta.env.BASE_URL}soundfonts`;
 export const BANKS = {
     'salamander-8': { url: `${SOUNDFONTS}/salamander-grand-v1.sf3`, strikes: [20, 40, 50, 64, 80, 96, 112, 125] },
     'salamander-16': { url: `${SOUNDFONTS}/salamander-grand-16-v1.sf3`, strikes: [13, 30, 35, 40, 45, 48, 53, 60, 68, 76, 84, 92, 100, 108, 116, 124] },
-    'amethyst-studio': { url: `${SOUNDFONTS}/amethyst-studio-v1.sf3`, strikes: [100] },
-    'amethyst-hall': { url: `${SOUNDFONTS}/amethyst-hall-v1.sf3`, strikes: [100] },
+    'amethyst-studio': { url: `${SOUNDFONTS}/amethyst-studio-v1.sf3`, strikes: [100], level: -2 },
+    'amethyst-hall': { url: `${SOUNDFONTS}/amethyst-hall-v1.sf3`, strikes: [100], level: -4.5 },
 };
 const CACHE = 'piano-room-banks-v1';
 const PRELOAD_CHANNEL = 15;
@@ -54,30 +56,29 @@ export async function loadBank(url, onProgress) {
  * Creates the synth and its output chain: synth -> volume -> limiter -> speakers.
  * All samples are decoded up front so the first note of each does not stall.
  */
-export async function createPiano(ctx, bank, strikes, onPreload) {
-    await ctx.audioWorklet.addModule(processorUrl);
+export async function createPiano(ctx, buffer, bank, onPreload) {
+    await Promise.all([ctx.audioWorklet.addModule(processorUrl), ctx.audioWorklet.addModule(limiterUrl)]);
     const synth = new WorkletSynthesizer(ctx);
     const volume = ctx.createGain();
-    const limiter = ctx.createDynamicsCompressor();
-    limiter.threshold.value = -3;
-    limiter.knee.value = 0;
-    limiter.ratio.value = 20;
-    limiter.attack.value = 0.002;
-    limiter.release.value = 0.15;
+    const limiter = new AudioWorkletNode(ctx, 'brickwall-limiter', { outputChannelCount: [2] });
     synth.connect(volume);
     volume.connect(limiter).connect(ctx.destination);
-    await synth.soundBankManager.addSoundBank(bank, 'main');
+    await synth.soundBankManager.addSoundBank(buffer, 'main');
     await synth.isReady;
     synth.setSystemParameter('interpolationType', 2); // hermite
-    await preload(synth, strikes, onPreload);
+    await preload(synth, bank.strikes, onPreload);
+    let v = 1, level = bank.level ?? 0;
+    const apply = () => { volume.gain.value = 3 * v * v * 10 ** (level / 20); };
 
     return {
         synth,
-        setVolume(v) { volume.gain.value = 3 * v * v; },
+        setVolume(to) { v = to; apply(); },
         setReverb(v) { for (let ch = 0; ch < 16; ch++) synth.controllerChange(ch, 91, v); },
-        async setBank(buffer, strikes, onPreload) {
+        async setBank(buffer, bank, onPreload) {
             await synth.soundBankManager.addSoundBank(buffer, 'main'); // replaces the current bank
-            await preload(synth, strikes, onPreload);
+            level = bank.level ?? 0;
+            apply();
+            await preload(synth, bank.strikes, onPreload);
         },
     };
 }

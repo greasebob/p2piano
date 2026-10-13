@@ -387,7 +387,7 @@ function setRoomPassword(pass) {
 
 async function start() {
     const id = $('piano').value;
-    piano = await createPiano(ctx, await fetchBank(id), BANKS[id].strikes, preloadProgress);
+    piano = await createPiano(ctx, await fetchBank(id), BANKS[id], preloadProgress);
     loadedPiano = id;
     piano.setVolume(+$('volume').value / 100);
     piano.setReverb(+$('reverb').value);
@@ -415,7 +415,7 @@ function changePiano() {
         if (!piano || id === loadedPiano) return;
         const bank = await fetchBank(id);
         if ($('piano').value === id) {
-            await piano.setBank(bank, BANKS[id].strikes, preloadProgress);
+            await piano.setBank(bank, BANKS[id], preloadProgress);
             loadedPiano = id;
         }
         setStatus(null);
