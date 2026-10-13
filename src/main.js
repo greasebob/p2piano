@@ -76,6 +76,7 @@ function enter() {
             const p = peer(id);
             p.info = { name: String(info?.name ?? 'Player').slice(0, 24), color: freeColor(id, info?.color) };
             renderPeople();
+            wakeSidebar();
             if (sustain) net.send(0xb0, 64, sustain); // a held or inverted pedal, for someone who just joined
         },
         onLeave(id) {
@@ -85,6 +86,7 @@ function enter() {
             view.clear(id);
             peers.delete(id);
             renderPeople();
+            wakeSidebar();
         },
         onMidi(id, status, a, b, holdMs) {
             const p = peer(id);
@@ -244,7 +246,7 @@ function bindKeyboard() {
         if (e.code === 'Enter' || e.code === 'NumpadEnter') {
             e.preventDefault();
             $('chat-input').focus();
-            wakeChat();
+            wakeSidebar();
             return;
         }
         if (isAlt(e.code)) {
@@ -452,19 +454,19 @@ function bindControls() {
 // Chat
 
 const MAX_MESSAGES = 200;
-const CHAT_IDLE_MS = 6000;
-let chatTimer = 0;
+const SIDEBAR_IDLE_MS = 6000;
+let sidebarTimer = 0;
 
-/** Shows the chat, which fades out once nobody has used it for a while. */
-function wakeChat() {
-    $('chat').classList.remove('idle');
-    clearTimeout(chatTimer);
-    chatTimer = setTimeout(restChat, CHAT_IDLE_MS);
+/** Shows the sidebar, which fades out once nobody has used it for a while. */
+function wakeSidebar() {
+    $('players').classList.remove('idle');
+    clearTimeout(sidebarTimer);
+    sidebarTimer = setTimeout(restSidebar, SIDEBAR_IDLE_MS);
 }
 
-function restChat() {
-    if ($('chat').contains(document.activeElement) || $('players').matches(':hover')) wakeChat();
-    else $('chat').classList.add('idle');
+function restSidebar() {
+    if ($('players').contains(document.activeElement) || $('players').matches(':hover')) wakeSidebar();
+    else $('players').classList.add('idle');
 }
 
 function bindChat() {
@@ -483,11 +485,11 @@ function bindChat() {
     input.addEventListener('keydown', e => {
         if (e.code === 'Escape') input.blur();
     });
-    $('players').addEventListener('pointerenter', wakeChat);
-    $('players').addEventListener('pointerleave', wakeChat);
-    input.addEventListener('focus', wakeChat);
-    input.addEventListener('blur', wakeChat);
-    wakeChat();
+    $('players').addEventListener('pointerenter', wakeSidebar);
+    $('players').addEventListener('pointerleave', wakeSidebar);
+    $('players').addEventListener('focusin', wakeSidebar);
+    $('players').addEventListener('focusout', wakeSidebar);
+    wakeSidebar();
 }
 
 function addMessage(info, text) {
@@ -501,7 +503,7 @@ function addMessage(info, text) {
     list.append(li);
     while (list.children.length > MAX_MESSAGES) list.firstChild.remove();
     if (atEnd) list.scrollTop = list.scrollHeight;
-    wakeChat();
+    wakeSidebar();
 }
 
 function renderPeople() {

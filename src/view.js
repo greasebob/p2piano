@@ -4,9 +4,9 @@ const LOW = 21, HIGH = 108;
 const isBlack = n => [1, 3, 6, 8, 10].includes(n % 12);
 const WHITES = Array.from({ length: HIGH - LOW + 1 }, (_, i) => LOW + i).filter(n => !isBlack(n)).length;
 const RISE_PX_PER_S = 140;
-const GLOW_LIMIT = 250; // notes on screen above which the glow is skipped
 const SPARKS_PER_S = 70; // per held key
-const MAX_SPARKS = 1500;
+const MAX_SPARKS = 800;
+const BLOOM_SCALE = 4; // the bloom is blurred at a quarter of the stage's resolution
 
 /** Left edge and width of each key as fractions of the keyboard's width. */
 const BOXES = new Map();
@@ -93,20 +93,8 @@ const NOTES = {
         g.roundRect(x, y, w, h, 3);
         g.fill();
     },
-    glow(g, t, c, x, y, w, h, dpr, glow) {
-        // Solid blocks with a halo that is faint at medium brightness and blooms above it
-        const k = glow / 0.5;
-        g.fillStyle = rgba(c, 1);
-        g.beginPath();
-        g.roundRect(x, y, w, h, Math.min(w * 0.15, 2));
-        if (glow > 0) {
-            g.shadowColor = rgba(c, k <= 1 ? 0.6 * k ** 3 : Math.min(1, 0.6 + 0.4 * (k - 1)));
-            g.shadowBlur = 6 * k ** 2.5 * dpr;
-        }
-        g.fill();
-        if (k > 1) g.fill(); // a second pass strengthens the bloom
-        g.shadowBlur = 0;
-    },
+    // Solid blocks filled one path per color by draw(); their halo is the stage's bloom
+    glow: null,
 };
 
 export const STYLES = Object.keys(NOTES);
@@ -125,6 +113,7 @@ export class PianoView {
         this.held = new Map(); // note -> [{ who, color, vel }]
         this.trails = [];
         this.sparks = [];
+        this.bloom = document.createElement('canvas');
         this.emitted = new Map(); // note -> fractional sparks owed
         this.style = 'glow';
         this.colors = 'player';
@@ -272,34 +261,90 @@ export class PianoView {
         this.trails = this.trails.filter(t => t.end === null || (now - t.end) / 1000 * RISE_PX_PER_S < h);
 
         const notes = NOTES[this.style];
-        const halo = this.trails.length <= GLOW_LIMIT ? this.glow : 0;
         // Notes of black keys are drawn over those of white keys.
-        const ordered = [...this.trails.filter(t => !isBlack(t.note)), ...this.trails.filter(t => isBlack(t.note))];
-        for (const t of ordered) {
-            const box = BOXES.get(t.note);
-            const bottom = h - (t.end === null ? 0 : (now - t.end) / 1000 * RISE_PX_PER_S);
-            const top = Math.max(h - (now - t.start) / 1000 * RISE_PX_PER_S, -4);
-            const x = box.x * w + 1, bw = Math.max(2, box.w * w - 2);
-            notes(g, t, rgb(this.colorOf(t.note, t.color)), x, top, bw, Math.max(2, bottom - top), dpr, halo);
+        for (const black of [false, true]) {
+            const paths = new Map(); // glow notes are solid, so each color is filled once as one path
+            for (const t of this.trails) {
+                if (isBlack(t.note) !== black) continue;
+                const box = BOXES.get(t.note);
+                const bottom = h - (t.end === null ? 0 : (now - t.end) / 1000 * RISE_PX_PER_S);
+                const top = Math.max(h - (now - t.start) / 1000 * RISE_PX_PER_S, -4);
+                const x = box.x * w + 1, bw = Math.max(2, box.w * w - 2), bh = Math.max(2, bottom - top);
+                const color = this.colorOf(t.note, t.color);
+                if (!glow) {
+                    notes(g, t, rgb(color), x, top, bw, bh);
+                    continue;
+                }
+                if (!paths.has(color)) paths.set(color, new Path2D());
+                paths.get(color).roundRect(x, top, bw, bh, Math.min(bw * 0.15, 2));
+            }
+            for (const [color, path] of paths) {
+                g.fillStyle = color;
+                g.fill(path);
+            }
         }
         if (glow && this.glow > 0) {
             g.globalCompositeOperation = 'lighter';
-            this.drawSparks(g, w, h, now, dt);
+            this.drawSparks(g, w, h, dt);
+            this.drawBloom(g, dpr);
+            g.globalCompositeOperation = 'lighter';
+            this.drawCoronas(g, w, h, now);
             g.globalCompositeOperation = 'source-over';
+            g.globalAlpha = 1;
         }
         requestAnimationFrame(() => this.draw());
     }
 
-    /** Sparks and a corona above each held key. */
-    drawSparks(g, w, h, now, dt) {
+    /**
+     * A blurred copy of everything drawn so far, laid behind it: faint at medium brightness and a
+     * strong bloom above it. One blur for the whole stage, so its cost does not grow with the notes.
+     */
+    drawBloom(g, dpr) {
+        const k = this.glow / 0.5;
+        let strength = k <= 1 ? 0.6 * k ** 3 : 0.6 + 1.4 * (k - 1);
+        if (strength < 0.01) return;
+        const src = this.canvas, b = this.bloom;
+        const bg = b.getContext('2d');
+        const filtered = 'filter' in bg;
+        const down = filtered ? BLOOM_SCALE : BLOOM_SCALE * 4; // without a blur filter, a coarser copy stands in for it
+        const bw = Math.max(1, Math.ceil(src.width / down)), bh = Math.max(1, Math.ceil(src.height / down));
+        if (b.width !== bw || b.height !== bh) {
+            b.width = bw;
+            b.height = bh;
+        } else {
+            bg.clearRect(0, 0, bw, bh);
+        }
+        if (filtered) bg.filter = `blur(${3 * k ** 2.5 * dpr / down}px)`;
+        bg.drawImage(src, 0, 0, bw, bh);
+        if (filtered) bg.filter = 'none';
+        g.save();
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.globalCompositeOperation = 'destination-over';
+        for (; strength > 0; strength--) {
+            g.globalAlpha = Math.min(1, strength);
+            g.drawImage(b, 0, 0, src.width, src.height);
+        }
+        g.restore();
+    }
+
+    /** One corona above each lit key, as bright as its brightest note there. */
+    drawCoronas(g, w, h, now) {
+        const lit = new Map(); // note -> { level, color }
         for (const t of this.trails) {
             const fade = t.end === null ? Math.min(1, (now - t.start) / 150) : 1 - (now - t.end) / 250;
-            if (fade <= 0) continue;
-            const box = BOXES.get(t.note);
-            const r = box.w * w * 1.6;
-            g.globalAlpha = fade * t.alpha * this.glow;
-            g.drawImage(sprite('corona', this.colorOf(t.note, t.color)), (box.x + box.w / 2) * w - r, h - r, 2 * r, 2 * r);
+            const level = fade * t.alpha;
+            if (level > (lit.get(t.note)?.level ?? 0)) lit.set(t.note, { level, color: t.color });
         }
+        for (const [note, { level, color }] of lit) {
+            const box = BOXES.get(note);
+            const r = box.w * w * 1.6;
+            g.globalAlpha = level * this.glow;
+            g.drawImage(sprite('corona', this.colorOf(note, color)), (box.x + box.w / 2) * w - r, h - r, 2 * r, 2 * r);
+        }
+    }
+
+    /** Sparks flying from each held key; the bloom gives them their halo. */
+    drawSparks(g, w, h, dt) {
         for (const [note, list] of this.held) {
             if (!list.length) {
                 this.emitted.delete(note);
@@ -328,13 +373,8 @@ export class PianoView {
             s.y += s.vy * dt;
             const p = s.age / s.life;
             const a = (p < 0.1 ? p / 0.1 : 1 - (p - 0.1) / 0.9) ** 2 * this.glow;
-            const tinted = sprite('spark', s.color);
-            for (const [k, alpha] of [[12, 0.2], [6, 0.3]]) {
-                g.globalAlpha = a * alpha;
-                g.drawImage(tinted, s.x - k * s.size / 2, s.y - k * s.size / 2, k * s.size, k * s.size);
-            }
-            g.globalAlpha = a * 0.85;
-            g.drawImage(sprite('spark', '#ffffff'), s.x - 1.25 * s.size, s.y - 1.25 * s.size, 2.5 * s.size, 2.5 * s.size);
+            g.globalAlpha = a;
+            g.drawImage(sprite('spark', s.color), s.x - 2.5 * s.size, s.y - 2.5 * s.size, 5 * s.size, 5 * s.size);
         }
         g.globalAlpha = 1;
     }
