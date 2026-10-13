@@ -1,13 +1,26 @@
 import { joinRoom, selfId } from 'trystero/nostr';
 
 // Room protocol v1 (see PROTOCOL.md). Peers meet through public Nostr relays and connect
-// directly over WebRTC.
+// directly over WebRTC, or through a TURN relay when they cannot.
 export const APP_ID = 'quartzmidi-piano-room';
 const HEARTBEAT_MS = 1000;
 const PING_MS = 3000;
 const LATENESS_WINDOW = 48;
 export const MAX_CHAT = 300;
 const MAX_HOLD_MS = 80;
+
+// Metered TURN relays, used only when two players cannot connect directly (strict NATs on some
+// carriers and school or work networks). Over port 443 too, which firewalls rarely block.
+// The login comes from the build (VITE_TURN_USER and VITE_TURN_PASS: repository secrets for
+// Pages, .env.local when running locally) so it stays out of the source.
+const TURN_USER = import.meta.env.VITE_TURN_USER;
+const TURN_PASS = import.meta.env.VITE_TURN_PASS;
+const TURN = !TURN_USER || !TURN_PASS ? [] : [
+    'turn:na.relay.metered.ca:80',
+    'turn:na.relay.metered.ca:80?transport=tcp',
+    'turn:na.relay.metered.ca:443',
+    'turns:na.relay.metered.ca:443?transport=tcp',
+].map(urls => ({ urls, username: TURN_USER, credential: TURN_PASS }));
 
 export { selfId };
 
@@ -16,7 +29,7 @@ export { selfId };
  * handlers: onPeer(id, info), onLeave(id), onMidi(id, status, a, b, holdMs), onPing(id, ms), onChat(id, text)
  */
 export function connect(roomId, me, handlers) {
-    const room = joinRoom({ appId: APP_ID }, roomId);
+    const room = joinRoom({ appId: APP_ID, turnConfig: TURN }, roomId);
     const hi = room.makeAction('hi');
     const ev = room.makeAction('ev');
     const chat = room.makeAction('chat');
