@@ -7,7 +7,7 @@ import {
 import { siDiscord, siRoblox } from 'simple-icons';
 import { BANKS, loadBank, createPiano, Hand } from './audio.js';
 import { connect, selfId, MAX_CHAT } from './net.js';
-import { PianoView, STYLES } from './view.js';
+import { PianoView, STYLES, DEFAULT_SPEED } from './view.js';
 import { keyAction, keyLabels, noteLabels, levelVelocity, SUSTAIN_CODE, SOSTENUTO_CODE } from './keys.js';
 import { loadIdentity, importIdentity, roomCode, newSalt, chainOwner, handoverText } from './identity.js';
 import { TAGS, GIVEN, ROOT_ID, TagBook, checkAtt, makeCert } from './certs.js';
@@ -724,7 +724,8 @@ function bindControls() {
         piano?.setReverb(+$('reverb').value);
     });
     $('brightness').value = store.get('pr-brightness', '50');
-    for (const id of ['volume', 'reverb', 'brightness']) {
+    $('speed').value = store.get('pr-speed', String(DEFAULT_SPEED));
+    for (const id of ['volume', 'reverb', 'brightness', 'speed']) {
         const show = () => { $(`${id}-val`).value = $(id).value; };
         $(id).addEventListener('input', show);
         show();
@@ -738,9 +739,10 @@ function bindControls() {
         $('custom-colors').hidden = mode !== 'custom';
         view.setStyle($('style').value);
         view.setBrightness(+$('brightness').value / 100);
+        view.setSpeed(+$('speed').value);
         view.setColors(mode, { white: $('white-color').value, black: $('black-color').value });
     };
-    for (const id of ['style', 'colors', 'white-color', 'black-color', 'brightness']) {
+    for (const id of ['style', 'colors', 'white-color', 'black-color', 'brightness', 'speed']) {
         $(id).addEventListener(id === 'style' || id === 'colors' ? 'change' : 'input', () => {
             store.set(`pr-${id}`, $(id).value);
             showStyle();

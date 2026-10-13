@@ -3,7 +3,7 @@
 const LOW = 21, HIGH = 108;
 const isBlack = n => [1, 3, 6, 8, 10].includes(n % 12);
 const WHITES = Array.from({ length: HIGH - LOW + 1 }, (_, i) => LOW + i).filter(n => !isBlack(n)).length;
-const RISE_PX_PER_S = 140;
+export const DEFAULT_SPEED = 280; // how fast the notes rise, in pixels a second
 const BLOOM_SCALE = 4; // the bloom is blurred at a quarter of the stage's resolution
 const TOUCH_KEY_PX = 36; // a white key's width on a touch screen, which shows part of the keyboard
 const LABEL_MIN_PX = 13; // narrower white keys hide their labels
@@ -123,6 +123,7 @@ export class PianoView {
         this.colors = 'player';
         this.custom = { white: '#14e0b0', black: '#ff1a8c' };
         this.glow = 0.5;
+        this.speed = DEFAULT_SPEED;
         this.lights = new Map(); // color -> color at the current brightness
         for (let n = LOW; n <= HIGH; n++) {
             const el = document.createElement('div');
@@ -221,6 +222,11 @@ export class PianoView {
         for (const [note, list] of this.held) this.paint(note, list[list.length - 1]);
     }
 
+    /** Sets how fast the notes rise, in pixels a second. */
+    setSpeed(pxPerS) {
+        this.speed = pxPerS;
+    }
+
     /** Sets the brightness of the notes and lit keys, 0 to 1. */
     setBrightness(v) {
         this.glow = v;
@@ -315,7 +321,7 @@ export class PianoView {
         g.clearRect(0, 0, w, h);
         const now = performance.now();
         const glow = this.style === 'glow';
-        this.trails = this.trails.filter(t => t.end === null || (now - t.end) / 1000 * RISE_PX_PER_S < h);
+        this.trails = this.trails.filter(t => t.end === null || (now - t.end) / 1000 * this.speed < h);
 
         const notes = NOTES[this.style];
         const zoom = WHITES / this.range.count, off = this.range.first / WHITES;
@@ -325,8 +331,8 @@ export class PianoView {
             for (const t of this.trails) {
                 if (isBlack(t.note) !== black) continue;
                 const box = BOXES.get(t.note);
-                const bottom = h - (t.end === null ? 0 : (now - t.end) / 1000 * RISE_PX_PER_S);
-                const top = Math.max(h - (now - t.start) / 1000 * RISE_PX_PER_S, -4);
+                const bottom = h - (t.end === null ? 0 : (now - t.end) / 1000 * this.speed);
+                const top = Math.max(h - (now - t.start) / 1000 * this.speed, -4);
                 const x = (box.x - off) * zoom * w + 1, bw = Math.max(2, box.w * zoom * w - 2), bh = Math.max(2, bottom - top);
                 if (x + bw < 0 || x > w) continue;
                 const color = this.colorOf(t.note, t.color);
