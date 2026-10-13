@@ -52,8 +52,12 @@ function paintWheel(canvas) {
     ctx.putImageData(img, 0, 0);
 }
 
-/** Turns `input` into a swatch that opens a colour wheel. Returns { refresh } to re-read input.value. */
-export function colorWheel(input) {
+/**
+ * Turns `input` into a swatch that opens a colour wheel. Returns { refresh } to re-read input.value.
+ * Given `brightness` (a range input) and `light` (hex, 0-1 -> hex), the slider is that input in
+ * place of the colour's own brightness, and the wheel picks colours at full brightness.
+ */
+export function colorWheel(input, { brightness = null, light = null } = {}) {
     input.type = 'hidden';
     let h = 0, s = 0, v = 1;
 
@@ -88,8 +92,13 @@ export function colorWheel(input) {
         const a = h * Math.PI / 180, r = s * SIZE / 2;
         mark.style.left = `${SIZE / 2 + Math.cos(a) * r}px`;
         mark.style.top = `${SIZE / 2 - Math.sin(a) * r}px`;
-        slider.value = String(v * 100);
-        slider.style.setProperty('--full', toHex(hsvToRgb(h, s, 1)));
+        if (brightness) {
+            slider.value = brightness.value;
+            slider.style.background = `linear-gradient(to right, ${[0, 0.25, 0.5, 0.75, 1].map(k => light(color, k)).join(', ')})`;
+        } else {
+            slider.value = String(v * 100);
+            slider.style.setProperty('--full', toHex(hsvToRgb(h, s, 1)));
+        }
         canvas.ariaValueText = color;
     };
     const emit = () => {
@@ -112,7 +121,7 @@ export function colorWheel(input) {
         const dx = e.clientX - (box.left + box.width / 2), dy = e.clientY - (box.top + box.height / 2);
         h = (Math.atan2(-dy, dx) * 180 / Math.PI + 360) % 360;
         s = clamp(Math.hypot(dx, dy) / (box.width / 2), 0, 1);
-        if (v < 0.05) v = 1; // picking a colour while black would show nothing
+        if (v < 0.05 || brightness) v = 1; // picking a colour while black would show nothing
         emit();
     };
     canvas.addEventListener('pointerdown', e => {
@@ -140,9 +149,15 @@ export function colorWheel(input) {
         emit();
     });
     slider.addEventListener('input', () => {
+        if (brightness) {
+            brightness.value = slider.value;
+            brightness.dispatchEvent(new Event('input', { bubbles: true }));
+            return;
+        }
         v = +slider.value / 100;
         emit();
     });
+    if (brightness) slider.step = brightness.step || '1';
 
     // Opening: read the input afresh and sit under the swatch, inside the window
     const place = (w, ht) => {

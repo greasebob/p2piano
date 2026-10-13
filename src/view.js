@@ -40,7 +40,7 @@ const toSrgb = v => (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055
  * A color seen as a light of the given brightness (0 to 1): black at 0, the color itself at 0.5,
  * and paler above that, its strongest channels saturating first.
  */
-function light(hex, brightness) {
+export function light(hex, brightness) {
     const k = brightness / 0.5;
     const over = 0.3 * Math.max(0, k - 1); // at full brightness a pastel, still tinted
     return '#' + rgb(hex).map(v => {

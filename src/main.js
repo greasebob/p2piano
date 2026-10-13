@@ -8,7 +8,7 @@ import {
 import { siDiscord, siRoblox } from 'simple-icons';
 import { BANKS, loadBank, createPiano, Hand, keepOwnBank, ownBank, isSoundBank } from './audio.js';
 import { connect, selfId, MAX_CHAT } from './net.js';
-import { PianoView, STYLES, DEFAULT_SPEED } from './view.js';
+import { PianoView, STYLES, DEFAULT_SPEED, light } from './view.js';
 import { keyAction, keyLabels, noteLabels, levelVelocity, SUSTAIN_CODE, SOSTENUTO_CODE } from './keys.js';
 import { loadIdentity, importIdentity, roomCode, newSalt, chainOwner, handoverText } from './identity.js';
 import { TAGS, GIVEN, ROOT_ID, TagBook, checkAtt, makeCert } from './certs.js';
@@ -849,11 +849,13 @@ function bindControls() {
     $('colors').value = ['rainbow', 'custom'].includes(savedColors) ? savedColors : 'player';
     for (const id of ['white-color', 'black-color']) {
         $(id).value = store.get(`pr-${id}`, $(id).value);
-        colorWheel($(id));
+        // A custom colour's brightness is set in its own picker
+        colorWheel($(id), { brightness: $(id === 'white-color' ? 'brightness' : 'brightness-black'), light });
     }
     const showStyle = () => {
         const mode = $('colors').value;
         $('custom-colors').hidden = mode !== 'custom';
+        for (const id of ['brightness', 'brightness-black']) $(id).closest('label').hidden = mode === 'custom';
         view.setStyle($('style').value);
         view.setBrightness(+$('brightness').value / 100, +$('brightness-black').value / 100);
         view.setSpeed(+$('speed').value);
