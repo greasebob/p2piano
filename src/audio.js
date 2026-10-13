@@ -14,6 +14,8 @@ export const BANKS = {
 const CACHE = 'piano-room-banks-v1';
 const PRELOAD_CHANNEL = 15;
 const SOFT_PEDAL_SCALE = 0.6;
+// The synth's default of 350 voices was too few for a held pedal; past this it cuts the quietest fading sounds
+const VOICE_CAP = 512;
 
 /** Downloads a bank, or reads it from Cache Storage if it was downloaded before. */
 export async function loadBank(url, onProgress) {
@@ -66,6 +68,7 @@ export async function createPiano(ctx, buffer, bank, onPreload) {
     await synth.soundBankManager.addSoundBank(buffer, 'main');
     await synth.isReady;
     synth.setSystemParameter('interpolationType', 2); // hermite
+    synth.setSystemParameter('voiceCap', VOICE_CAP);
     await preload(synth, bank.strikes, onPreload);
     let v = 1, level = bank.level ?? 0;
     const apply = () => { volume.gain.value = 3 * v * v * 10 ** (level / 20); };
@@ -97,8 +100,9 @@ async function preload(synth, strikes, onProgress) {
 }
 
 /**
- * One player's notes on one MIDI channel. The synth only handles sustain, so sostenuto and
- * the soft pedal are implemented here.
+ * One player's notes on one MIDI channel. The pedals are implemented here, not in the synth: a key
+ * struck again while the pedal holds it lets its old sound fade, as the string's own does, instead
+ * of piling up voices until the synth cuts the oldest (the bass first) to make room.
  */
 export class Hand {
     constructor(synth, channel, onKey) {
@@ -108,6 +112,8 @@ export class Hand {
         this.down = new Set(); // keys held
         this.caught = new Set(); // keys held when sostenuto went down
         this.waiting = new Set(); // caught keys released, sounding until sostenuto lifts
+        this.ringing = new Set(); // keys released while sustain is down, sounding until it lifts
+        this.sustain = false;
         this.sostenuto = false;
         this.soft = false;
     }
@@ -119,22 +125,31 @@ export class Hand {
         if (type === 0x90 && b > 0) {
             const vel = this.soft ? Math.max(1, Math.round(b * SOFT_PEDAL_SCALE)) : b;
             this.down.add(a);
-            this.waiting.delete(a);
+            // The key's last sound, still held by a pedal, fades under the new one
+            if (this.waiting.delete(a) | this.ringing.delete(a)) this.synth.noteOff(this.ch, a, opts);
             this.synth.noteOn(this.ch, a, vel, opts);
             this.onKey(a, b, delay);
         } else if (type === 0x80 || type === 0x90) {
             this.down.delete(a);
             this.onKey(a, 0, delay);
             if (this.caught.has(a)) this.waiting.add(a);
+            else if (this.sustain) this.ringing.add(a);
             else this.synth.noteOff(this.ch, a, opts);
         } else if (type === 0xb0) {
             if (a === 64) {
-                this.synth.controllerChange(this.ch, 64, b, opts);
+                this.sustain = b >= 64;
+                if (!this.sustain) {
+                    for (const n of this.ringing) this.synth.noteOff(this.ch, n, opts);
+                    this.ringing.clear();
+                }
             } else if (a === 66) {
                 const on = b >= 64;
                 if (on && !this.sostenuto) this.caught = new Set(this.down);
                 if (!on && this.sostenuto) {
-                    for (const n of this.waiting) this.synth.noteOff(this.ch, n, opts);
+                    for (const n of this.waiting) {
+                        if (this.sustain) this.ringing.add(n);
+                        else this.synth.noteOff(this.ch, n, opts);
+                    }
                     this.waiting.clear();
                     this.caught.clear();
                 }
@@ -147,14 +162,13 @@ export class Hand {
 
     /** Releases all keys and pedals. */
     release() {
-        for (const n of [...this.down, ...this.waiting]) {
-            this.synth.noteOff(this.ch, n);
-            this.onKey(n, 0, 0);
-        }
-        this.synth.controllerChange(this.ch, 64, 0);
+        for (const n of this.down) this.onKey(n, 0, 0);
+        for (const n of new Set([...this.down, ...this.waiting, ...this.ringing])) this.synth.noteOff(this.ch, n);
         this.down.clear();
         this.caught.clear();
         this.waiting.clear();
+        this.ringing.clear();
+        this.sustain = false;
         this.sostenuto = false;
         this.soft = false;
     }
