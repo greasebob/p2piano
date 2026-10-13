@@ -9,6 +9,7 @@ const PING_MS = 3000;
 const LATENESS_WINDOW = 48;
 export const MAX_CHAT = 300;
 const MAX_HOLD_MS = 80;
+const BATCH_MS = 10; // a busy player's notes go out together, at most one message this often
 const CLOSE_DELAY_MS = 1000; // a refused handshake stays open this long so the refusal arrives
 
 // Metered TURN relays, used only when two players cannot connect directly (strict NATs on some
@@ -85,6 +86,8 @@ export function connect(roomId, me, ident, since, handlers) {
     const cert = room.makeAction('cert');
     const peers = new Map(); // id -> { lateness: number[] }
     let queue = null;
+    let sentAt = -Infinity; // when the last MIDI message went out
+    let flushTimer = 0;
 
     const open = () => [...peers.keys()].filter(id => !blocked.has(id));
     const from = f => (data, { peerId }) => { if (!blocked.has(peerId) && peers.has(peerId)) f(data, peerId); };
@@ -131,6 +134,11 @@ export function connect(roomId, me, ident, since, handlers) {
         const target = open();
         if (target.length) action.send(data, { target });
     };
+    const flush = () => {
+        everyone(ev, queue);
+        queue = null;
+        sentAt = performance.now();
+    };
     const beat = setInterval(() => everyone(ev, [performance.now()]), HEARTBEAT_MS);
     const pings = setInterval(() => {
         for (const id of open()) room.ping(id).then(ms => handlers.onPing(id, ms), () => {});
@@ -139,11 +147,18 @@ export function connect(roomId, me, ident, since, handlers) {
     return {
         /** The identity a peer proved in its handshake. */
         ident: id => idents.get(id) ?? null,
-        /** Queues a MIDI message. Messages queued in the same task are sent together. */
+        /**
+         * Queues a MIDI message. Messages queued in the same task are sent together, and so are those
+         * within BATCH_MS of the last send, so a black MIDI does not send thousands of messages a second.
+         * The first message after a quiet spell still goes out at once.
+         */
         send(status, a, b) {
             if (!queue) {
-                queue = [performance.now()];
-                queueMicrotask(() => { everyone(ev, queue); queue = null; });
+                const now = performance.now();
+                queue = [now];
+                const wait = sentAt + BATCH_MS - now;
+                if (wait > 0) flushTimer = setTimeout(flush, wait);
+                else queueMicrotask(flush);
             }
             queue.push(status, a, b);
         },
@@ -176,6 +191,7 @@ export function connect(roomId, me, ident, since, handlers) {
         leave() {
             clearInterval(beat);
             clearInterval(pings);
+            clearTimeout(flushTimer);
             return room.leave();
         },
     };

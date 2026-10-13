@@ -117,7 +117,8 @@ A chat message to everyone, at most 300 characters; a receiver trims it and drop
 `[t, status, a, b, status, a, b, ...]`
 
 `t` is the sender's monotonic clock in milliseconds, each triple one MIDI message.
-Everything the sender played in the same moment goes as one message.
+Everything the sender played in the same moment goes as one message, and so does everything it plays within 10 ms of its last message, so a busy sender sends at most 100 a second.
+The receiver plays a message's triples together.
 `[t]` alone is a heartbeat, sent every second so the receiver can keep measuring the delay.
 
 Messages a player sends:
