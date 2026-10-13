@@ -147,19 +147,23 @@ input:not([type]):focus, input[type=text]:focus { border-color: var(--accent); o
 /* Room */
 #room {
     height: 100%; display: grid; background: var(--bg); color: var(--text);
-    grid-template-rows: auto 1fr minmax(120px, 24vh);
+    grid-template-rows: auto minmax(0, 1fr) auto minmax(120px, 24vh);
     grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
-    grid-template-areas: "head head" "stage stage" "keys keys";
+    grid-template-areas: "head head" "stage stage" "map map" "keys keys";
 }
 header { grid-area: head; }
 #players { grid-area: 2 / 1 / 3 / 2; z-index: 1; } /* floats over the stage, which keeps the full width */
 #stage { grid-area: stage; }
+#map { grid-area: map; }
 #keys { grid-area: keys; }
 header {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--bg);
 }
-#room-name { color: var(--muted); font: 13px ui-monospace, "Cascadia Mono", monospace; letter-spacing: .02em; flex: 1; }
+#room-name {
+    color: var(--muted); font: 13px ui-monospace, "Cascadia Mono", monospace; letter-spacing: .02em; flex: 1;
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 #players {
     min-height: 0; display: flex; flex-direction: column; margin: 10px 0 10px 10px; padding: 10px 6px 8px;
     background: color-mix(in srgb, var(--panel) 70%, transparent); border: 1px solid var(--line); border-radius: 14px;
@@ -170,6 +174,10 @@ header {
     font-size: 12px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums;
 }
 #players h2 svg { width: 14px; height: 14px; }
+#players-toggle {
+    display: inline-flex; align-items: center; gap: 6px; height: auto; padding: 0;
+    border: 0; background: none; color: inherit; font: inherit; cursor: default;
+}
 #players { transition: opacity .4s; }
 @media (min-width: 701px) { #players.idle { opacity: 0; } }
 #people { display: grid; gap: 1px; list-style: none; margin: 0; padding: 0; max-height: 40%; overflow-y: auto; flex: none; }
@@ -258,7 +266,9 @@ header {
     border-radius: 7px; color: var(--muted); font-size: 12px; font-weight: 500;
     transition: background-color .08s, color .08s;
 }
-.pedal.on { background: var(--accent); color: var(--on-accent); }
+button.pedal { border-color: transparent; background: transparent; }
+button.pedal:hover { background: var(--hover); color: var(--text); }
+.pedal.on, button.pedal.on { background: var(--accent); color: var(--on-accent); }
 .toggle { padding: 0 10px 0 8px; gap: 4px; font-size: 12px; }
 .toggle svg { width: 14px; height: 14px; }
 .toggle[aria-pressed=true], .pedals .toggle[aria-pressed=true] { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
@@ -298,7 +308,13 @@ header {
 #stage { position: relative; background: var(--stage); min-height: 0; }
 #rise { position: absolute; inset: 0; width: 100%; height: 100%; }
 
-#keys { position: relative; background: var(--black-key); touch-action: none; user-select: none; }
+#keys { position: relative; isolation: isolate; overflow: hidden; background: var(--black-key); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.keybed { position: absolute; top: 0; bottom: 0; left: 0; width: 100%; }
+#map {
+    display: block; width: 100%; height: 22px; padding: 3px 0; box-sizing: border-box;
+    background: #050507; touch-action: none; cursor: grab; -webkit-touch-callout: none;
+}
+[data-narrow] .key span { display: none; }
 .key { position: absolute; top: 0; }
 .key.white {
     height: 100%; background: var(--white-key);
@@ -363,19 +379,47 @@ header {
 [data-style=pfa] .key.on::after { opacity: 1; background: linear-gradient(color-mix(in srgb, var(--c) 50%, black), var(--c) 30%); }
 [data-style=pfa] .key.black.on::after { background: linear-gradient(to right, var(--c) 12%, color-mix(in srgb, var(--c) 85%, black) 12% 88%, color-mix(in srgb, var(--c) 70%, black) 88%); }
 @media (max-width: 700px) {
-    .key span { display: none; }
     .meters .pedals { display: none; }
     .meters { order: 1; } /* settings and full screen stay on the first row */
     #room {
-        grid-template-rows: auto auto 1fr minmax(120px, 24vh);
+        grid-template-rows: auto auto minmax(0, 1fr) auto minmax(120px, 24vh);
         grid-template-columns: minmax(0, 1fr);
-        grid-template-areas: "head" "side" "stage" "keys";
+        grid-template-areas: "head" "side" "stage" "map" "keys";
     }
     #players { grid-area: side; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0; padding: 6px 8px; border-width: 0 0 1px; border-radius: 0; box-shadow: none; }
     #players h2 { margin: 0 6px 0 4px; }
     #people { display: flex; flex: 1; overflow-x: auto; }
     #people .person { width: auto; white-space: nowrap; }
     #chat { flex-basis: 100%; margin: 0; padding-top: 6px; max-height: 120px; }
+}
+
+/* Touch screens: no computer-keyboard controls, one header row, Sustain tapped on and off */
+@media (pointer: coarse) {
+    .meter, .transpose, #sus-invert, #ped-sos, #ped-soft { display: none; }
+    .meters { order: 0; }
+    .meters .pedals { display: inline-flex; }
+    .pedals .pedal { height: 34px; padding: 0 14px; font-size: 13px; }
+    header button.icon, #invite { height: 40px; }
+    header button.icon { width: 40px; }
+    #room[data-labels=qwerty] .key span { display: none; }
+}
+@media (pointer: coarse) and (max-width: 420px) {
+    #invite span { display: none; }
+    #invite { width: 40px; padding: 0; justify-content: center; }
+}
+/* A phone held sideways: the players fold into their count over the stage, and the keys grow */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+    #room { grid-template-rows: auto minmax(0, 1fr) auto minmax(96px, 42vh); }
+    header { padding: 4px 10px; }
+    #players { align-self: start; justify-self: start; max-height: calc(100% - 16px); margin: 8px 0 8px 8px; padding: 6px; overflow: hidden; }
+    #players.open { grid-row: 2 / 5; justify-self: stretch; align-self: stretch; background: var(--panel); } /* opened, it may cover the keys' left end until closed */
+    #players.idle { opacity: 1; }
+    #players:not(.open) :is(#people, #chat) { display: none; }
+    #players h2 { margin: 0; }
+    #players-toggle { height: 32px; padding: 0 8px; cursor: pointer; }
+    #players.unread:not(.open) #players-toggle::after {
+        content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

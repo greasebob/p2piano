@@ -5,6 +5,9 @@ const isBlack = n => [1, 3, 6, 8, 10].includes(n % 12);
 const WHITES = Array.from({ length: HIGH - LOW + 1 }, (_, i) => LOW + i).filter(n => !isBlack(n)).length;
 const RISE_PX_PER_S = 140;
 const BLOOM_SCALE = 4; // the bloom is blurred at a quarter of the stage's resolution
+const TOUCH_KEY_PX = 36; // a white key's width on a touch screen, which shows part of the keyboard
+const LABEL_MIN_PX = 13; // narrower white keys hide their labels
+const MIDDLE_C = 23; // middle C's place among the white keys
 
 /** Left edge and width of each key as fractions of the keyboard's width. */
 const BOXES = new Map();
@@ -100,10 +103,18 @@ export class PianoView {
      * @param {HTMLCanvasElement} canvas
      * @param {Record<number,{text:string, ctrl?:boolean}>} labels
      * @param {(note:number, vel:number)=>void} onPress  vel 0 releases
+     * @param {HTMLCanvasElement} map  the whole keyboard in small, to move along it when it does not fit
      */
-    constructor(keysEl, canvas, labels, onPress) {
+    constructor(keysEl, canvas, labels, onPress, map) {
         this.canvas = canvas;
+        this.map = map;
+        this.keysEl = keysEl;
         this.root = keysEl.parentElement;
+        this.bed = document.createElement('div');
+        this.bed.className = 'keybed';
+        keysEl.append(this.bed);
+        this.range = { first: 0, count: WHITES }; // the white keys shown
+        this.mapDirty = true;
         this.keys = new Map();
         this.held = new Map(); // note -> [{ who, color, vel }]
         this.trails = [];
@@ -121,12 +132,15 @@ export class PianoView {
             el.style.width = `${box.w * 100}%`;
             el.dataset.note = n;
             el.append(document.createElement('span'));
-            keysEl.append(el);
+            this.bed.append(el);
             this.keys.set(n, el);
         }
         this.setLabels(labels);
         this.setStyle(this.style);
         this.bindPointer(keysEl, onPress);
+        this.bindMap();
+        this.fit();
+        new ResizeObserver(() => this.fit()).observe(keysEl);
         requestAnimationFrame(() => this.draw());
     }
 
@@ -142,6 +156,58 @@ export class PianoView {
     setStyle(style) {
         this.style = style in NOTES ? style : 'glow';
         this.root.dataset.style = this.style;
+        this.mapDirty = true;
+    }
+
+    /** On a touch screen, shows as many keys as fit at a finger's width; elsewhere all 88. */
+    fit() {
+        const width = this.keysEl.clientWidth;
+        if (!width) return;
+        let count = WHITES;
+        if (matchMedia('(pointer: coarse)').matches) {
+            count = Math.max(7, Math.round(width / TOUCH_KEY_PX));
+            if (count > WHITES * 0.85) count = WHITES;
+        }
+        if (count !== this.range.count) {
+            let center = NaN;
+            try { center = parseFloat(localStorage.getItem('pr-keys-center')); } catch { /* storage blocked */ }
+            // By default from the C at or below middle C, an octave lower for each two more shown
+            if (!Number.isFinite(center)) center = MIDDLE_C - 7 * Math.floor((count - 7) / 14) + count / 2;
+            this.setRange(center - count / 2, count);
+        }
+        this.root.toggleAttribute('data-narrow', width / count < LABEL_MIN_PX);
+    }
+
+    setRange(first, count) {
+        first = Math.max(0, Math.min(WHITES - count, Math.round(first)));
+        this.range = { first, count };
+        this.bed.style.width = `${WHITES / count * 100}%`;
+        this.bed.style.left = `${-first / count * 100}%`;
+        this.map.hidden = count >= WHITES;
+        this.mapDirty = true;
+    }
+
+    /** Dragging the small keyboard moves the keys shown along it. */
+    bindMap() {
+        const map = this.map;
+        let grab = 0; // where in the shown range the finger holds it, in white keys
+        const whiteAt = e => {
+            const r = map.getBoundingClientRect();
+            return (e.clientX - r.left) / r.width * WHITES;
+        };
+        const move = e => {
+            this.setRange(whiteAt(e) - grab, this.range.count);
+            try { localStorage.setItem('pr-keys-center', String(this.range.first + this.range.count / 2)); } catch { /* storage blocked */ }
+        };
+        map.addEventListener('pointerdown', e => {
+            const at = whiteAt(e), { first, count } = this.range;
+            grab = at >= first && at <= first + count ? at - first : count / 2;
+            map.setPointerCapture(e.pointerId);
+            move(e);
+        });
+        map.addEventListener('pointermove', e => {
+            if (map.hasPointerCapture(e.pointerId)) move(e);
+        });
     }
 
     /**
@@ -202,6 +268,7 @@ export class PianoView {
         };
         keysEl.addEventListener('pointerup', end);
         keysEl.addEventListener('pointercancel', end);
+        keysEl.addEventListener('contextmenu', e => e.preventDefault()); // a long press holds a note
     }
 
     /** A player's key went down (vel > 0) or up. */
@@ -223,6 +290,7 @@ export class PianoView {
     paint(note, top) {
         const el = this.keys.get(note);
         el.classList.toggle('on', !!top);
+        this.mapDirty = true;
         if (top) {
             el.style.setProperty('--c', this.colorOf(note, top.color));
             el.style.setProperty('--a', String(0.45 + 0.55 * top.vel / 127));
@@ -250,6 +318,7 @@ export class PianoView {
         this.trails = this.trails.filter(t => t.end === null || (now - t.end) / 1000 * RISE_PX_PER_S < h);
 
         const notes = NOTES[this.style];
+        const zoom = WHITES / this.range.count, off = this.range.first / WHITES;
         // Notes of black keys are drawn over those of white keys.
         for (const black of [false, true]) {
             const paths = new Map(); // glow notes are solid, so each color is filled once as one path
@@ -258,7 +327,8 @@ export class PianoView {
                 const box = BOXES.get(t.note);
                 const bottom = h - (t.end === null ? 0 : (now - t.end) / 1000 * RISE_PX_PER_S);
                 const top = Math.max(h - (now - t.start) / 1000 * RISE_PX_PER_S, -4);
-                const x = box.x * w + 1, bw = Math.max(2, box.w * w - 2), bh = Math.max(2, bottom - top);
+                const x = (box.x - off) * zoom * w + 1, bw = Math.max(2, box.w * zoom * w - 2), bh = Math.max(2, bottom - top);
+                if (x + bw < 0 || x > w) continue;
                 const color = this.colorOf(t.note, t.color);
                 if (!glow) {
                     notes(g, t, rgb(color), x, top, bw, bh);
@@ -275,11 +345,47 @@ export class PianoView {
         if (glow && this.glow > 0) {
             this.drawBloom(g, dpr);
             g.globalCompositeOperation = 'lighter';
-            this.drawCoronas(g, w, h, now);
+            this.drawCoronas(g, w, h, now, zoom, off);
             g.globalCompositeOperation = 'source-over';
             g.globalAlpha = 1;
         }
+        this.drawMap();
         requestAnimationFrame(() => this.draw());
+    }
+
+    /** The whole keyboard in small, its lit keys and the part shown, redrawn only when one changes. */
+    drawMap() {
+        const m = this.map;
+        if (m.hidden) return;
+        const dpr = devicePixelRatio || 1;
+        const w = m.clientWidth, h = m.clientHeight;
+        if (!w || !h) return;
+        if (m.width !== Math.round(w * dpr) || m.height !== Math.round(h * dpr)) {
+            m.width = Math.round(w * dpr);
+            m.height = Math.round(h * dpr);
+            this.mapDirty = true;
+        }
+        if (!this.mapDirty) return;
+        this.mapDirty = false;
+        const g = m.getContext('2d');
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.clearRect(0, 0, w, h);
+        for (const black of [false, true]) {
+            for (const [note, box] of BOXES) {
+                if (isBlack(note) !== black) continue;
+                const list = this.held.get(note);
+                const top = list?.[list.length - 1];
+                g.fillStyle = top ? this.colorOf(note, top.color) : black ? '#1f1f22' : '#d9d9d5';
+                g.fillRect(box.x * w + (black ? 0 : 0.5), 0, box.w * w - (black ? 0 : 1), black ? h * 0.6 : h);
+            }
+        }
+        const x0 = this.range.first / WHITES * w, x1 = (this.range.first + this.range.count) / WHITES * w;
+        g.fillStyle = 'rgba(0,0,0,0.6)';
+        g.fillRect(0, 0, x0, h);
+        g.fillRect(x1, 0, w - x1, h);
+        g.strokeStyle = getComputedStyle(this.root).getPropertyValue('--accent').trim() || '#f2b84b';
+        g.lineWidth = 2;
+        g.strokeRect(x0 + 1, 1, x1 - x0 - 2, h - 2);
     }
 
     /**
@@ -315,7 +421,7 @@ export class PianoView {
     }
 
     /** One corona above each lit key, as bright as its brightest note there. */
-    drawCoronas(g, w, h, now) {
+    drawCoronas(g, w, h, now, zoom, off) {
         const lit = new Map(); // note -> { level, color }
         for (const t of this.trails) {
             const fade = t.end === null ? Math.min(1, (now - t.start) / 150) : 1 - (now - t.end) / 250;
@@ -324,9 +430,9 @@ export class PianoView {
         }
         for (const [note, { level, color }] of lit) {
             const box = BOXES.get(note);
-            const r = box.w * w * 1.6;
+            const r = box.w * zoom * w * 1.6;
             g.globalAlpha = level * this.glow;
-            g.drawImage(sprite(this.colorOf(note, color)), (box.x + box.w / 2) * w - r, h - r, 2 * r, 2 * r);
+            g.drawImage(sprite(this.colorOf(note, color)), (box.x + box.w / 2 - off) * zoom * w - r, h - r, 2 * r, 2 * r);
         }
     }
 }

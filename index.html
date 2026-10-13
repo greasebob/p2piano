@@ -38,7 +38,7 @@
                 <button type="button" data-transpose="12" title="Up an octave (↑)" aria-label="Up an octave"><i data-lucide="chevrons-right"></i></button>
             </span>
             <span class="pedals" role="group" aria-label="Pedals">
-                <span id="ped-sus" class="pedal" title="Sustain (Space)">Sustain</span>
+                <button type="button" id="ped-sus" class="pedal" title="Sustain (Space)">Sustain</button>
                 <button type="button" id="sus-invert" class="toggle" aria-pressed="false" title="Inverted sustain"><i data-lucide="arrow-down-up"></i>Invert</button>
                 <span id="ped-sos" class="pedal" title="Sostenuto (])">Sostenuto</span>
                 <span id="ped-soft" class="pedal">Soft</span>
@@ -117,7 +117,7 @@
     </div>
 
     <aside id="players" aria-label="Players">
-        <h2 title="Players"><i data-lucide="users"></i><span id="people-count"></span></h2>
+        <h2><button id="players-toggle" type="button" title="Players" aria-expanded="false"><i data-lucide="users"></i><span id="people-count"></span></button></h2>
         <ul id="people" aria-live="polite"></ul>
         <form id="chat">
             <ol id="messages" aria-label="Chat" aria-live="polite"></ol>
@@ -126,6 +126,7 @@
     </aside>
 
     <section id="stage" aria-hidden="true"><canvas id="rise"></canvas></section>
+    <canvas id="map" aria-hidden="true" hidden></canvas>
     <div id="keys" role="img" aria-label="Piano keyboard"></div>
 </div>
 </body>

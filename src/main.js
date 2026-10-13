@@ -157,7 +157,8 @@ async function enter() {
 
     ctx = new AudioContext({ latencyHint: 'interactive' });
     $('labels').value = store.get('pr-labels', 'qwerty') === 'notes' ? 'notes' : 'qwerty';
-    view = new PianoView($('keys'), $('rise'), labelsFor($('labels').value), (note, vel) => local(vel ? 0x90 : 0x80, note, vel));
+    $('room').dataset.labels = $('labels').value;
+    view = new PianoView($('keys'), $('rise'), labelsFor($('labels').value), (note, vel) => local(vel ? 0x90 : 0x80, note, vel), $('map'));
     await prepareTags();
     join();
     renderPeople();
@@ -550,6 +551,8 @@ function bindKeyboard() {
         pedal(SUSTAIN_CODE, pedals.has(SUSTAIN_CODE));
     });
     if (inverted(SUSTAIN_CODE)) pedal(SUSTAIN_CODE, false);
+    // A tap on Sustain holds the pedal until the next tap, for a touch screen
+    $('ped-sus').addEventListener('click', () => local(0xb0, 64, sustain > 0 ? 0 : 127));
 
     window.addEventListener('keydown', e => {
         if (isText(e.target)) return;
@@ -690,6 +693,7 @@ function bindControls() {
         }, 1500);
     });
 
+    $('fullscreen').hidden = !document.fullscreenEnabled;
     $('fullscreen').addEventListener('click', async () => {
         if (document.fullscreenElement) return document.exitFullscreen();
         await document.documentElement.requestFullscreen();
@@ -745,6 +749,7 @@ function bindControls() {
     showStyle();
     $('labels').addEventListener('change', () => {
         store.set('pr-labels', $('labels').value);
+        $('room').dataset.labels = $('labels').value;
         view.setLabels(labelsFor($('labels').value));
     });
     for (const button of document.querySelectorAll('[data-transpose]')) {
@@ -779,7 +784,8 @@ function wakeSidebar() {
 }
 
 function restSidebar() {
-    if ($('players').contains(document.activeElement) || $('players').matches(':hover')) wakeSidebar();
+    const hovered = $('players').matches(':hover') && matchMedia('(hover: hover)').matches; // a touch leaves :hover stuck
+    if ($('players').contains(document.activeElement) || hovered) wakeSidebar();
     else $('players').classList.add('idle');
 }
 
@@ -798,6 +804,12 @@ function bindChat() {
     });
     input.addEventListener('keydown', e => {
         if (e.code === 'Escape') input.blur();
+    });
+    // On a phone held sideways the players fold into their count, opened by a tap
+    $('players-toggle').addEventListener('click', () => {
+        const open = $('players').classList.toggle('open');
+        $('players-toggle').ariaExpanded = String(open);
+        $('players').classList.remove('unread');
     });
     $('players').addEventListener('pointerenter', wakeSidebar);
     $('players').addEventListener('pointerleave', wakeSidebar);
@@ -819,6 +831,7 @@ function addMessage(info, text) {
     list.append(li);
     while (list.children.length > MAX_MESSAGES) list.firstChild.remove();
     if (atEnd) list.scrollTop = list.scrollHeight;
+    if (info !== me && !$('players').classList.contains('open')) $('players').classList.add('unread');
     wakeSidebar();
 }
 
