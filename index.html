@@ -44,16 +44,20 @@
 
     <div id="settings" popover role="dialog" aria-labelledby="settings-title">
         <h2 id="settings-title">Settings</h2>
+        <div class="section">
         <label>Name <input id="my-name" maxlength="24"></label>
+        </div>
+        <div class="section">
         <label><span>Volume <output id="volume-val" for="volume"></output></span><input id="volume" type="range" min="0" max="100"></label>
         <label><span>Reverb <output id="reverb-val" for="reverb"></output></span><input id="reverb" type="range" min="0" max="127"></label>
-        <label>Key labels <select id="labels"><option value="qwerty">QWERTY</option><option value="notes">Notes</option></select></label>
         <label>Piano <select id="piano">
             <option value="salamander-8">Salamander, 8 layers</option>
             <option value="salamander-16">Salamander, 16 layers</option>
             <option value="amethyst-studio">Amethyst Studio</option>
             <option value="amethyst-hall">Amethyst Hall</option>
         </select></label>
+        </div>
+        <div class="section">
         <label>Style <select id="style">
             <option value="glow">Glow</option>
             <option value="pfa">PFA</option>
@@ -69,13 +73,19 @@
             <label><input id="white-color" type="color" value="#14e0b0"> White keys</label>
             <label><input id="black-color" type="color" value="#ff1a8c"> Black keys</label>
         </div>
+        <label>Key labels <select id="labels"><option value="qwerty">QWERTY</option><option value="notes">Notes</option></select></label>
+        </div>
+        <div class="section">
         <fieldset>
             <legend>MIDI inputs</legend>
             <ul id="midi-list"></ul>
             <p id="midi-none" hidden>None</p>
         </fieldset>
+        </div>
+        <div class="section">
         <p class="credit">Salamander Grand Piano by Alexander Holm, <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>; SF2 by <a href="https://freepats.zenvoid.org/" target="_blank" rel="noopener">FreePats</a>.
             <a href="https://github.com/MyBlackMIDIScore/AmethystImperialGrand" target="_blank" rel="noopener">Amethyst Imperial Grand</a> by MBMS, samples <a href="https://creativecommons.org/licenses/by-nd/4.0/" target="_blank" rel="noopener">CC BY-ND 4.0</a>, unmodified and converted to SF3.</p>
+        </div>
     </div>
 
     <aside id="players" aria-label="Players">
