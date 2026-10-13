@@ -1,21 +1,30 @@
 import './style.css';
 import {
-    createIcons, Link, Check, Maximize, Minimize, Settings, LogIn, Plus, Keyboard,
+    createIcons, createElement, Link, Check, Maximize, Minimize, Settings, LogIn, Plus, Keyboard,
     ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp, Users,
+    Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2,
 } from 'lucide';
 import { BANKS, loadBank, createPiano, Hand } from './audio.js';
 import { connect, selfId, MAX_CHAT } from './net.js';
 import { PianoView, STYLES } from './view.js';
 import { keyAction, keyLabels, noteLabels, levelVelocity, SUSTAIN_CODE, SOSTENUTO_CODE } from './keys.js';
+import { loadIdentity, importIdentity, roomCode, newSalt, chainOwner, handoverText } from './identity.js';
 
 const ICONS = {
     Link, Check, Maximize, Minimize, Settings, LogIn, Plus, Keyboard,
     ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp, Users,
+    Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2,
 };
 const COLORS = ['#f2b84b', '#5ec7e8', '#ef6f8e', '#8bd17c', '#b28cf2', '#f58d4e', '#4fd1b5', '#e8e15e'];
 const PEER_CHANNELS = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]; // 0 is ours, 9 is drums, 15 preloads
-const ROOM_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789';
 const MAX_TRANSPOSE = 24;
+// Tags a player may show beside their name, each held by the keys listed; the player turns theirs on or off.
+const TAGS = {
+    dev: { label: 'Dev', ids: ['ZYo5K3u3LA4sUD6g'] },
+};
+const MAX_BANS = 500;
+const REFUSED_WAIT_MS = 4000;
+const PASSWORD_WAIT_MS = 5000;
 const TRANSPOSE_KEYS = { ArrowLeft: -1, ArrowRight: 1, ArrowDown: -12, ArrowUp: 12 };
 
 const $ = id => document.getElementById(id);
@@ -24,12 +33,29 @@ const store = {
     get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch { /* storage unavailable */ } },
 };
-const roomFromHash = () => (/^#([a-z0-9]{4,32})$/.exec(location.hash) || [])[1] || null;
+const session = {
+    take(k) { try { const v = sessionStorage.getItem(k); sessionStorage.removeItem(k); return v; } catch { return null; } },
+    set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* storage unavailable */ } },
+};
+// A room link is #code, or #code/lock when the room has a password.
+const roomFromHash = () => (/^#([a-z0-9]{4,32})(\/lock)?$/.exec(location.hash) || [])[1] || null;
+const lockedHash = () => /\/lock$/.test(location.hash);
+
+// A dev link (#dev-key=d.x.y) puts the dev's key in this browser and is removed from the address at once.
+const devKey = /^#dev-key=([\w.-]+)$/.exec(location.hash)?.[1];
+if (devKey) history.replaceState(null, '', location.pathname + location.search);
+const identReady = (devKey ? importIdentity(store, devKey).catch(() => {}) : Promise.resolve()).then(() => loadIdentity(store));
 
 let roomId = roomFromHash();
-let me = { name: store.get('pr-name', ''), color: store.get('pr-color', COLORS[Math.floor(Math.random() * COLORS.length)]) };
+let me = { name: store.get('pr-name', ''), color: store.get('pr-color', COLORS[Math.floor(Math.random() * COLORS.length)]), tag: null };
 store.set('pr-color', me.color);
 
+let ident = null; // this browser's key
+let since = 0; // when this player entered the room, on its own clock
+let password = '';
+let room = {}; // this room as remembered here: { salt, pass, chain, bans: { v, list: [{ id, name }] } }
+let ownerKey = null; // the room's owner, from its ownership chain
+const mutes = loadMutes(); // key id -> { vol, play, chat }, this player's own
 let ctx, net, view;
 let piano = null;
 let myHand = null;
@@ -42,54 +68,108 @@ const peers = new Map(); // id -> { id, info, hand, ping }
 
 // Start screen
 
+const NOTICES = {
+    kick: ['user-x', 'Kicked from the room'],
+    ban: ['ban', 'Banned from the room'],
+    password: ['lock', 'Wrong password'],
+};
+const notice = NOTICES[session.take('pr-notice')];
+if (notice) {
+    $('notice').innerHTML = `<i data-lucide="${notice[0]}"></i><span>${notice[1]}</span>`;
+    $('notice').hidden = false;
+}
 $('name').value = me.name;
 $('go').innerHTML = roomId
     ? '<i data-lucide="log-in"></i><span>Join room</span>'
     : '<i data-lucide="plus"></i><span>Create room</span>';
+// Joining a room with a password asks for it; creating one offers the lock.
+$('lock').hidden = Boolean(roomId);
+if (roomId && (lockedHash() || notice?.[0] === 'lock')) {
+    $('pass').hidden = false;
+    $('pass').value = loadRoom(roomId).pass ?? '';
+}
+$('lock').addEventListener('click', () => {
+    const on = $('lock').ariaPressed !== 'true';
+    $('lock').ariaPressed = String(on);
+    $('lock').innerHTML = `<i data-lucide="${on ? 'lock' : 'lock-open'}"></i>`;
+    icons();
+    $('pass').hidden = !on;
+    if (on) $('pass').focus();
+});
 icons();
 
-$('start-form').addEventListener('submit', e => {
+$('start-form').addEventListener('submit', async e => {
     e.preventDefault();
     me.name = $('name').value.trim() || 'Player';
     store.set('pr-name', me.name);
-    if (!roomId) {
-        roomId = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => ROOM_CHARS[b % ROOM_CHARS.length]).join('');
-        history.replaceState(null, '', `#${roomId}`);
+    $('go').disabled = true;
+    ident = await identReady;
+    password = $('pass').hidden ? '' : $('pass').value;
+    if (roomId) {
+        room = loadRoom(roomId);
+        if ($('pass').hidden) password = room.pass ?? '';
+    } else {
+        // The code comes from the creator's key, which is how the room knows its owner.
+        const salt = newSalt();
+        roomId = await roomCode(ident.key, salt);
+        room = { ...loadRoom(roomId), salt, chain: { key: ident.key, salt, next: [] } };
     }
-    enter();
+    room.pass = password || undefined;
+    saveRoom();
+    showLock();
+    enter().catch(showError);
 });
-window.addEventListener('hashchange', () => { if (roomFromHash() !== roomId) location.reload(); });
+window.addEventListener('hashchange', () => {
+    if (roomFromHash() !== roomId || /^#dev-key=/.test(location.hash)) location.reload();
+});
 
 // Room
 
-function enter() {
+const keepOpen = e => { e.preventDefault(); e.returnValue = ''; };
+
+async function enter() {
     $('start').hidden = true;
     $('room').hidden = false;
     $('room-name').textContent = roomId;
-    window.addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue = ''; });
+    window.addEventListener('beforeunload', keepOpen);
+    since = Date.now();
+    ownerKey = await chainOwner(room.chain, roomId);
+    if (!ownerKey) room.chain = undefined;
 
     ctx = new AudioContext({ latencyHint: 'interactive' });
     $('labels').value = store.get('pr-labels', 'qwerty') === 'notes' ? 'notes' : 'qwerty';
     view = new PianoView($('keys'), $('rise'), labelsFor($('labels').value), (note, vel) => local(vel ? 0x90 : 0x80, note, vel));
-    net = connect(roomId, me, {
+    bindTags();
+    join();
+    renderPeople();
+    bindChat();
+    bindKeyboard();
+    bindMidi();
+    bindControls();
+    bindPlayerMenu();
+    bindRoomSettings();
+    start().catch(showError);
+}
+
+let refusedTimer = 0;
+let passwordTimer = 0;
+
+function join() {
+    net = connect(roomId, me, ident, since, {
         onPeer(id, info) {
             const p = peer(id);
-            p.info = { name: String(info?.name ?? 'Player').slice(0, 24), color: freeColor(id, info?.color) };
+            const tag = TAGS[info?.tag] && TAGS[info.tag].ids.includes(p.ident?.id) ? info.tag : null;
+            p.info = { name: String(info?.name ?? 'Player').slice(0, 24), color: freeColor(id, info?.color), tag };
             renderPeople();
             wakeSidebar();
             if (sustain) net.send(0xb0, 64, sustain); // a held or inverted pedal, for someone who just joined
         },
         onLeave(id) {
-            const p = peers.get(id);
-            if (!p) return;
-            p.hand?.release();
-            view.clear(id);
-            peers.delete(id);
-            renderPeople();
-            wakeSidebar();
+            forget(id);
         },
         onMidi(id, status, a, b, holdMs) {
             const p = peer(id);
+            if (muteOf(p).play) return; // a muted player is neither heard nor shown
             if (p.hand) {
                 p.hand.midi(status, a, b, holdMs > 0 ? ctx.currentTime + holdMs / 1000 : 0, holdMs);
                 return;
@@ -105,15 +185,167 @@ function enter() {
             renderPeople();
         },
         onChat(id, text) {
-            addMessage(peer(id).info, text);
+            const p = peer(id);
+            if (!muteOf(p).chat) addMessage(p.info, text);
+        },
+        state: () => ({ chain: room.chain ?? null, bans: bans() }),
+        chain: () => room.chain ?? null,
+        offerChain: adoptChain,
+        refuse: (id, them) => (isBanned(them) ? 'ban' : null),
+        onRefused(them, why) {
+            if (why !== 'ban') return;
+            if (them.key === ownerKey) return leaveWith('ban');
+            // Refused by someone other than the owner: banned once nobody in the room lets this player in.
+            refusedTimer ||= setTimeout(() => { refusedTimer = 0; if (!peers.size) leaveWith('ban'); }, REFUSED_WAIT_MS);
+        },
+        password: () => password,
+        onWrongPassword(them) {
+            // The newer of the two has the wrong one, and the owner never does.
+            if (ownerKey === ident.key || peers.size || them.since >= since) return;
+            passwordTimer ||= setTimeout(() => { passwordTimer = 0; if (!peers.size) leaveWith('password'); }, PASSWORD_WAIT_MS);
+        },
+        onRoom(id, data) {
+            roomState(id, data).catch(() => {});
+        },
+        onMod(id, msg) {
+            hostMessage(id, msg);
         },
     });
+}
+
+/** Takes `pass` as the room's password, as everyone in it does. */
+function usePassword(pass) {
+    password = pass;
+    room.pass = pass || undefined;
+    saveRoom();
+    showLock();
+    renderRoomSettings();
+}
+
+/** Shows whether the room has a password, in the header and in the link. */
+function showLock() {
+    $('room-lock').hidden = !password;
+    history.replaceState(null, '', `#${roomId}${password ? '/lock' : ''}`);
+}
+
+/** Leaves the room for the start screen with a notice: 'kick', 'ban' or 'password'. */
+function leaveWith(why) {
+    session.set('pr-notice', why);
+    window.removeEventListener('beforeunload', keepOpen);
+    if (why === 'ban') history.replaceState(null, '', location.pathname + location.search);
+    location.reload();
+}
+
+// Hosting. The owner is whoever the ownership chain names, at first the room's creator. While the owner
+// is away the player who has been in the room longest hosts, and the owner takes it back on return.
+
+function loadRoom(id) {
+    try { return JSON.parse(store.get(`pr-room-${id}`, '{}')) || {}; } catch { return {}; }
+}
+
+function saveRoom() {
+    store.set(`pr-room-${roomId}`, JSON.stringify(room));
+}
+
+const bans = () => room.bans ?? { v: 0, list: [] };
+const isBanned = them => them.key !== ownerKey && bans().list.some(b => b.id === them.id);
+
+/** Everyone in the room this player can see, itself included. */
+function members() {
+    const list = [{ peerId: selfId, key: ident.key, since }];
+    for (const p of peers.values()) if (p.ident) list.push({ peerId: p.id, key: p.ident.key, since: p.ident.since });
+    return list;
+}
+
+/** The host among `list`: the owner if present, else whoever came first. */
+function hostOf(list) {
+    const owners = ownerKey ? list.filter(m => m.key === ownerKey) : [];
+    const pool = owners.length ? owners : list;
+    return pool.reduce((a, b) => (b.since < a.since || (b.since === a.since && b.peerId < a.peerId) ? b : a)).peerId;
+}
+
+const hostId = () => hostOf(members());
+const amHost = () => hostId() === selfId;
+
+/** Takes a peer's ownership chain when it is valid and newer than this one. */
+async function adoptChain(chain) {
+    if (!chain || JSON.stringify(chain) === JSON.stringify(room.chain ?? null)) return;
+    const owner = await chainOwner(chain, roomId);
+    if (!owner) return;
+    if (ownerKey && room.chain && chain.next.length <= room.chain.next.length) return;
+    room.chain = chain;
+    ownerKey = owner;
+    saveRoom();
     renderPeople();
-    bindChat();
-    bindKeyboard();
-    bindMidi();
-    bindControls();
-    start().catch(showError);
+}
+
+/** A peer's room state: the ownership chain from anyone, the ban list from the host only. */
+async function roomState(id, data) {
+    await adoptChain(data?.chain);
+    const list = data?.bans;
+    if (!list || !Number.isInteger(list.v) || !Array.isArray(list.list) || list.v <= bans().v) return;
+    // The host's list is the room's. A host who just arrived takes the list of whoever hosted before it.
+    const host = hostId();
+    const others = members().filter(m => m.peerId !== selfId);
+    const before = host === selfId && others.length ? hostOf(others) : null;
+    if (id !== host && id !== before) return;
+    setBans(list);
+    if (host === selfId) net.shareState();
+}
+
+function setBans(list) {
+    room.bans = {
+        v: list.v,
+        list: list.list.slice(0, MAX_BANS).map(b => ({ id: String(b?.id ?? '').slice(0, 16), name: String(b?.name ?? '').slice(0, 24) })),
+    };
+    saveRoom();
+    for (const p of [...peers.values()]) if (p.ident && isBanned(p.ident)) drop(p.id);
+    renderRoomSettings();
+}
+
+/** A message from the host; anyone else's is ignored. */
+function hostMessage(id, msg) {
+    if (id !== hostId() || !msg || typeof msg !== 'object') return;
+    if (msg.out === 'kick' || msg.out === 'ban') return leaveWith(msg.out);
+    if (typeof msg.kick === 'string' && msg.kick !== selfId) drop(msg.kick);
+    if (typeof msg.pass === 'string') usePassword(msg.pass.slice(0, 64));
+}
+
+function kick(p) {
+    if (!amHost() || p.ident?.key === ownerKey) return;
+    net.mod({ out: 'kick' }, p.id);
+    net.mod({ kick: p.id });
+    drop(p.id);
+}
+
+function ban(p) {
+    if (!amHost() || !p.ident || p.ident.key === ownerKey) return;
+    net.mod({ out: 'ban' }, p.id);
+    const list = bans().list.filter(b => b.id !== p.ident.id);
+    setBans({ v: bans().v + 1, list: [...list, { id: p.ident.id, name: p.info.name }] });
+    net.shareState();
+}
+
+function unban(id) {
+    if (!amHost()) return;
+    setBans({ v: bans().v + 1, list: bans().list.filter(b => b.id !== id) });
+    net.shareState();
+}
+
+/** Hands the room to another player for good. Only the owner can. */
+async function makeHost(p) {
+    if (ownerKey !== ident.key || !p.ident || !room.chain) return;
+    const n = room.chain.next.length;
+    const sig = await ident.sign(handoverText(roomId, n, p.ident.key));
+    await adoptChain({ ...room.chain, next: [...room.chain.next, { to: p.ident.key, sig }] });
+    net.shareState();
+}
+
+/** Sets or clears the room's password. Everyone in the room stays and asks it of whoever joins next. */
+function setRoomPassword(pass) {
+    if (!amHost() || pass === password) return;
+    net.mod({ pass });
+    usePassword(pass);
 }
 
 async function start() {
@@ -169,11 +401,29 @@ function labelsFor(mode) {
 
 function peer(id) {
     if (!peers.has(id)) {
-        const p = { id, info: { name: '…', color: '#888888' }, hand: null, ping: null };
+        const p = { id, ident: net.ident(id), info: { name: '…', color: '#888888', tag: null }, hand: null, ping: null };
         peers.set(id, p);
         attachHand(p);
     }
     return peers.get(id);
+}
+
+/** Removes a player who left. */
+function forget(id) {
+    const p = peers.get(id);
+    if (!p) return;
+    p.hand?.release();
+    view.clear(id);
+    peers.delete(id);
+    if (menuPeer === id) $('player-menu').hidePopover();
+    renderPeople();
+    wakeSidebar();
+}
+
+/** Removes a player and stops talking to them. */
+function drop(id) {
+    net.block(id);
+    forget(id);
 }
 
 function attachHand(p) {
@@ -186,6 +436,34 @@ function attachHand(p) {
         if (delayMs > 0) setTimeout(show, delayMs);
         else show();
     });
+    applyVolume(p);
+}
+
+// Each player's own mutes and volumes for others, kept by key so they last across visits.
+
+function loadMutes() {
+    try { return JSON.parse(store.get('pr-mutes', '{}')) || {}; } catch { return {}; }
+}
+
+const muteOf = p => (p.ident && mutes[p.ident.id]) || {};
+
+function setMute(p, change) {
+    if (!p.ident) return;
+    const m = { vol: 100, play: false, chat: false, ...mutes[p.ident.id], ...change };
+    if (m.vol === 100 && !m.play && !m.chat) delete mutes[p.ident.id];
+    else mutes[p.ident.id] = m;
+    store.set('pr-mutes', JSON.stringify(mutes));
+    if ('play' in change && m.play) {
+        p.hand?.release();
+        view.clear(p.id);
+    }
+    applyVolume(p);
+    renderPeople();
+}
+
+/** A player's volume is their channel's volume (CC 7, 100 by default). */
+function applyVolume(p) {
+    if (p.hand) piano.synth.controllerChange(p.hand.ch, 7, Math.round(muteOf(p).vol ?? 100));
 }
 
 /** Returns the wanted colour, or the next one no other player is shown in. */
@@ -499,33 +777,194 @@ function addMessage(info, text) {
     const name = document.createElement('b');
     name.textContent = info.name;
     name.style.setProperty('--c', info.color);
-    li.append(name, ' ', text);
+    li.append(name);
+    if (info.tag) li.append(' ', tagPill(info.tag));
+    li.append(' ', text);
     list.append(li);
     while (list.children.length > MAX_MESSAGES) list.firstChild.remove();
     if (atEnd) list.scrollTop = list.scrollHeight;
     wakeSidebar();
 }
 
+const icon = (node, name, title) => {
+    const svg = createElement(node, { class: `lucide lucide-${name}` });
+    if (title) svg.setAttribute('aria-label', title);
+    else svg.setAttribute('aria-hidden', 'true');
+    return svg;
+};
+
+function tagPill(tag) {
+    const pill = document.createElement('span');
+    pill.className = `tag tag-${tag}`;
+    pill.textContent = TAGS[tag].label;
+    return pill;
+}
+
 function renderPeople() {
+    if (!ident) return;
     const ul = $('people');
     ul.replaceChildren();
-    const row = (info, ping, self) => {
+    const host = hostId();
+    const row = (id, info, ping, p) => {
         const li = document.createElement('li');
-        if (self) li.className = 'self';
         li.style.setProperty('--c', info.color);
+        // Another player's row opens their menu: volume, mutes and, for the host, kick and ban.
+        const body = document.createElement(p ? 'button' : 'div');
+        body.className = 'person';
+        if (p) {
+            body.type = 'button';
+            body.addEventListener('click', () => openPlayerMenu(p, body));
+        } else {
+            li.className = 'self';
+        }
         const name = document.createElement('span');
+        name.className = 'name';
         name.textContent = info.name;
-        li.append(name);
+        body.append(name);
+        if (info.tag) body.append(tagPill(info.tag));
+        if (id === host) body.append(icon(Crown, 'crown', 'Host'));
+        const m = p ? muteOf(p) : {};
+        if (m.play) body.append(icon(VolumeX, 'volume-x', 'Muted'));
+        if (m.chat) body.append(icon(MessageSquareOff, 'message-square-off', 'Chat muted'));
         if (ping != null) {
             const ms = document.createElement('small');
             ms.textContent = `${ping} ms`;
-            li.append(ms);
+            body.append(ms);
         }
+        li.append(body);
         ul.append(li);
     };
-    row(me, null, true);
-    for (const p of peers.values()) row(p.info, p.ping, false);
+    row(selfId, me, null, null);
+    for (const p of peers.values()) row(p.id, p.info, p.ping, p);
     $('people-count').textContent = peers.size + 1;
+    renderRoomSettings();
+}
+
+// Player menu
+
+let menuPeer = null;
+
+function bindPlayerMenu() {
+    const menu = $('player-menu');
+    const current = () => peers.get(menuPeer);
+    menu.addEventListener('toggle', e => {
+        if (e.newState === 'closed') {
+            menuPeer = null;
+            for (const b of menu.querySelectorAll('.armed')) disarm(b);
+        }
+    });
+    $('pm-volume').addEventListener('input', () => {
+        const p = current();
+        if (p) setMute(p, { vol: +$('pm-volume').value });
+        $('pm-volume-val').value = `${$('pm-volume').value}%`;
+    });
+    for (const [id, field] of [['pm-play', 'play'], ['pm-chat', 'chat']]) {
+        $(id).addEventListener('click', () => {
+            const p = current();
+            if (!p) return;
+            setMute(p, { [field]: !muteOf(p)[field] });
+            $(id).ariaPressed = String(Boolean(muteOf(p)[field]));
+        });
+    }
+    // Kick acts at once; Ban and Make host ask for a second click.
+    $('pm-kick').addEventListener('click', () => {
+        const p = current();
+        menu.hidePopover();
+        if (p) kick(p);
+    });
+    const confirmed = (id, act) => $(id).addEventListener('click', () => {
+        const b = $(id);
+        if (!b.classList.contains('armed')) {
+            b.classList.add('armed');
+            b.dataset.label = b.lastChild.textContent;
+            b.lastChild.textContent = 'Confirm';
+            return;
+        }
+        const p = current();
+        menu.hidePopover();
+        if (p) act(p);
+    });
+    confirmed('pm-ban', ban);
+    confirmed('pm-host', makeHost);
+}
+
+function disarm(b) {
+    b.classList.remove('armed');
+    if (b.dataset.label) b.lastChild.textContent = b.dataset.label;
+}
+
+function openPlayerMenu(p, anchor) {
+    const menu = $('player-menu');
+    menuPeer = p.id;
+    $('pm-name').textContent = p.info.name;
+    $('pm-name').style.setProperty('--c', p.info.color);
+    const m = muteOf(p);
+    $('pm-volume').value = m.vol ?? 100;
+    $('pm-volume-val').value = `${$('pm-volume').value}%`;
+    $('pm-play').ariaPressed = String(Boolean(m.play));
+    $('pm-chat').ariaPressed = String(Boolean(m.chat));
+    const owner = p.ident?.key === ownerKey;
+    $('pm-hosting').hidden = !amHost() || owner;
+    $('pm-host').hidden = ownerKey !== ident.key || !p.ident;
+    $('pm-ban').hidden = !p.ident;
+    menu.showPopover();
+    const r = anchor.getBoundingClientRect();
+    const w = menu.offsetWidth;
+    const h = menu.offsetHeight;
+    const left = r.right + 8 + w <= innerWidth ? r.right + 8 : Math.max(8, r.left);
+    const top = r.right + 8 + w <= innerWidth ? r.top : r.bottom + 6;
+    menu.style.left = `${Math.min(left, innerWidth - w - 8)}px`;
+    menu.style.top = `${Math.max(8, Math.min(top, innerHeight - h - 8))}px`;
+}
+
+// Room settings, for the host: the password and the ban list
+
+function bindRoomSettings() {
+    $('room-pass').addEventListener('change', () => setRoomPassword($('room-pass').value.trim().slice(0, 64)));
+}
+
+function renderRoomSettings() {
+    if (!ident || !net) return;
+    const host = amHost();
+    $('room-settings').hidden = !host;
+    if (!host) return;
+    if (document.activeElement !== $('room-pass')) $('room-pass').value = password;
+    const list = bans().list;
+    $('bans-box').hidden = !list.length;
+    const ul = $('ban-list');
+    ul.replaceChildren();
+    for (const b of list) {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        name.textContent = b.name || b.id;
+        const undo = document.createElement('button');
+        undo.type = 'button';
+        undo.className = 'icon';
+        undo.title = 'Unban';
+        undo.setAttribute('aria-label', `Unban ${b.name}`);
+        undo.append(icon(Undo2, 'undo-2'));
+        undo.addEventListener('click', () => unban(b.id));
+        li.append(name, undo);
+        ul.append(li);
+    }
+}
+
+// Tags
+
+function bindTags() {
+    const mine = Object.keys(TAGS).find(t => TAGS[t].ids.includes(ident.id));
+    $('tag-row').hidden = !mine;
+    if (!mine) return;
+    $('tag-pill').replaceWith(Object.assign(tagPill(mine), { id: 'tag-pill' }));
+    $('tag-on').checked = store.get('pr-tag', '1') === '1';
+    const apply = () => {
+        me.tag = $('tag-on').checked ? mine : null;
+        store.set('pr-tag', me.tag ? '1' : '0');
+        net?.setMe(me);
+        renderPeople();
+    };
+    $('tag-on').addEventListener('change', apply);
+    me.tag = $('tag-on').checked ? mine : null;
 }
 
 /** Shows loading progress (0-1) or an error in the header; null text hides it. */

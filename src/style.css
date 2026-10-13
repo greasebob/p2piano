@@ -111,6 +111,37 @@ input:not([type]):focus, input[type=text]:focus { border-color: var(--accent); o
 #start input { height: 54px; padding: 0 18px; border-radius: 12px; text-align: center; }
 #start button { height: 54px; gap: 10px; border-radius: 12px; }
 #start button svg { width: 22px; height: 22px; }
+#start .go-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+#start .go-row:has(#lock[hidden]) { grid-template-columns: 1fr; }
+#lock { width: 54px; padding: 0; justify-content: center; color: var(--muted); }
+#lock[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
+#notice { display: flex; align-items: center; justify-content: center; gap: 8px; margin: -8px 0 4px; color: var(--error); font-size: 15px; }
+#notice svg { width: 18px; height: 18px; }
+#room-lock { display: inline-flex; color: var(--muted); margin-left: -6px; }
+#room-lock svg { width: 14px; height: 14px; }
+
+/* A player's menu, opened from their row */
+#player-menu {
+    margin: 0; inset: auto; position: fixed; width: 230px; padding: 10px;
+    display: none; flex-direction: column; gap: 4px;
+    background: var(--panel); color: var(--text); border: 1px solid var(--line-strong); border-radius: 12px;
+    box-shadow: var(--shadow);
+}
+#player-menu:popover-open { display: flex; }
+#pm-name { padding: 2px 6px 6px; color: var(--c); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-volume { display: flex; align-items: center; gap: 8px; padding: 0 6px 4px; color: var(--muted); }
+.pm-volume input { flex: 1; min-width: 0; accent-color: var(--accent); }
+.pm-volume output { width: 38px; text-align: right; font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums; }
+#player-menu button { width: 100%; height: 32px; border-color: transparent; background: transparent; gap: 8px; padding: 0 8px; font-weight: 500; }
+#player-menu button:hover { background: var(--hover); }
+#player-menu button svg { width: 16px; height: 16px; color: var(--muted); }
+#player-menu button[aria-pressed=true] { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+#player-menu button[aria-pressed=true] svg { color: currentColor; }
+#pm-hosting { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
+#pm-hosting[hidden] { display: none; }
+#player-menu .danger, #player-menu .danger svg { color: var(--error); }
+#player-menu .armed { background: color-mix(in srgb, var(--error) 14%, transparent); color: var(--error); }
+#player-menu #pm-host.armed { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 
 /* Room */
 #room {
@@ -141,13 +172,23 @@ header {
 #players { transition: opacity .4s; }
 @media (min-width: 701px) { #players.idle { opacity: 0; } }
 #people { display: grid; gap: 1px; list-style: none; margin: 0; padding: 0; max-height: 40%; overflow-y: auto; flex: none; }
-#people li {
-    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
-    padding: 5px 10px; border-radius: 8px;
-    color: color-mix(in srgb, var(--c) 62%, black); font-weight: 600;
+#people li { color: color-mix(in srgb, var(--c) 62%, black); font-weight: 600; }
+#people .person {
+    display: flex; align-items: center; gap: 6px; width: 100%; height: auto;
+    padding: 5px 10px; border: 0; border-radius: 8px; background: transparent;
+    color: inherit; font: inherit; text-align: left;
 }
-#people li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#people li.self { background: color-mix(in srgb, var(--c) 12%, transparent); }
+#people button.person:hover { background: var(--hover); }
+#people .person .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#people .person svg { width: 14px; height: 14px; flex: none; color: var(--muted); }
+#people .person svg.lucide-crown { color: var(--accent); }
+#people li.self .person { background: color-mix(in srgb, var(--c) 12%, transparent); }
+.tag {
+    flex: none; padding: 0 6px; border-radius: 5px; font-size: 10.5px; line-height: 17px; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase; vertical-align: 1px;
+    color: var(--on-accent); background: var(--accent);
+}
+.tag-dev { background: linear-gradient(135deg, #b28cf2, #5ec7e8); color: #0d0b14; }
 #chat {
     flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px;
     margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line);
@@ -220,7 +261,9 @@ header {
 }
 #settings fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; }
 #settings legend { color: var(--muted); font-size: 13px; padding: 0; margin-bottom: 6px; }
-#midi-list { list-style: none; margin: 0; padding: 0; }
+#midi-list, #ban-list { list-style: none; margin: 0; padding: 0; }
+#ban-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text); }
+#ban-list span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #midi-list label { display: flex; gap: 8px; align-items: center; margin: 4px 0; color: var(--text); }
 #midi-none { margin: 0; font-size: 13px; color: var(--muted); }
 .credit { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
@@ -305,6 +348,7 @@ header {
     #players { grid-area: side; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0; padding: 6px 8px; border-width: 0 0 1px; border-radius: 0; box-shadow: none; }
     #players h2 { margin: 0 6px 0 4px; }
     #people { display: flex; flex: 1; overflow-x: auto; }
+    #people .person { width: auto; white-space: nowrap; }
     #chat { flex-basis: 100%; margin: 0; padding-top: 6px; max-height: 120px; }
 }
 

@@ -11,15 +11,20 @@
 <main id="start">
     <form id="start-form">
         <h1><svg class="logo" viewBox="8 5 48 52" aria-hidden="true"><g fill="currentColor"><rect x="12" y="26" width="12" height="28" rx="3"/><rect x="40" y="26" width="12" height="28" rx="3"/></g><g class="tie"><path d="M15 21C22 9 42 9 49 21C42 14 22 14 15 21Z" stroke-width="2.5" stroke-linejoin="round"/></g></svg><span><span class="p2p">P2P</span>iano</span></h1>
+        <p id="notice" role="alert" hidden></p>
         <input id="name" placeholder="Name" aria-label="Name" maxlength="24" autocomplete="nickname">
-        <button id="go" type="submit" class="primary"></button>
+        <input id="pass" type="password" placeholder="Password" aria-label="Password" maxlength="64" autocomplete="off" hidden>
+        <div class="go-row">
+            <button id="go" type="submit" class="primary"></button>
+            <button id="lock" type="button" aria-pressed="false" title="Password" aria-label="Password"><i data-lucide="lock-open"></i></button>
+        </div>
     </form>
 </main>
 
 <div id="room" hidden>
     <header>
         <button id="invite" type="button" title="Copy the room link"><i data-lucide="link"></i><span>Invite</span></button>
-        <span id="room-name" title="Room"></span>
+        <span id="room-name" title="Room"></span><span id="room-lock" title="Password" hidden><i data-lucide="lock"></i></span>
         <div id="loading" role="status" hidden><span id="loading-text"></span><div class="bar"><div id="loading-bar"></div></div></div>
         <div class="meters">
             <span class="meter" title="Last velocity">Velocity <b id="vel-last">–</b></span>
@@ -46,6 +51,14 @@
         <h2 id="settings-title">Settings</h2>
         <div class="section">
         <label>Name <input id="my-name" maxlength="24"></label>
+        <label class="check" id="tag-row" hidden><input id="tag-on" type="checkbox"><span id="tag-pill"></span></label>
+        </div>
+        <div class="section" id="room-settings" hidden>
+        <label>Room password <input id="room-pass" type="text" maxlength="64" autocomplete="off" placeholder="None"></label>
+        <fieldset id="bans-box" hidden>
+            <legend>Banned</legend>
+            <ul id="ban-list"></ul>
+        </fieldset>
         </div>
         <div class="section">
         <label><span>Volume <output id="volume-val" for="volume"></output></span><input id="volume" type="range" min="0" max="100"></label>
@@ -85,6 +98,18 @@
         <div class="section">
         <p class="credit">Salamander Grand Piano by Alexander Holm, <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>; SF2 by <a href="https://freepats.zenvoid.org/" target="_blank" rel="noopener">FreePats</a>.
             <a href="https://github.com/MyBlackMIDIScore/AmethystImperialGrand" target="_blank" rel="noopener">Amethyst Imperial Grand</a> by MBMS, samples <a href="https://creativecommons.org/licenses/by-nd/4.0/" target="_blank" rel="noopener">CC BY-ND 4.0</a>, unmodified and converted to SF3.</p>
+        </div>
+    </div>
+
+    <div id="player-menu" popover role="dialog" aria-labelledby="pm-name">
+        <b id="pm-name"></b>
+        <label class="pm-volume"><i data-lucide="volume-2"></i><input id="pm-volume" type="range" min="0" max="100" aria-label="Volume"><output id="pm-volume-val" for="pm-volume"></output></label>
+        <button id="pm-play" type="button" class="toggle" aria-pressed="false"><i data-lucide="volume-x"></i><span>Mute playing</span></button>
+        <button id="pm-chat" type="button" class="toggle" aria-pressed="false"><i data-lucide="message-square-off"></i><span>Mute chat</span></button>
+        <div id="pm-hosting">
+            <button id="pm-host" type="button"><i data-lucide="crown"></i><span>Make host</span></button>
+            <button id="pm-kick" type="button"><i data-lucide="user-x"></i><span>Kick</span></button>
+            <button id="pm-ban" type="button" class="danger"><i data-lucide="ban"></i><span>Ban</span></button>
         </div>
     </div>
 
