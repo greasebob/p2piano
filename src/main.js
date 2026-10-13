@@ -569,7 +569,7 @@ function bindKeyboard() {
             if (e.code === 'Escape' && !e.target.closest('[popover]')) e.target.blur();
             if (CONTROL_KEYS.has(e.code)) return;
         }
-        if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+        if (e.code === 'Enter' || e.code === 'NumpadEnter' || (e.key === '/' && !e.ctrlKey && !e.altKey && !e.metaKey)) {
             e.preventDefault();
             $('chat-input').focus();
             wakeSidebar();
