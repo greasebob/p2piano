@@ -67,13 +67,14 @@ Every player works the host out for itself.
 
 ### `hi`
 
-`{ name, color, notes, tags, certs, untags }`
+`{ name, color, notes, glow, tags, certs, untags }`
 
 Sent to each peer as it joins, and to everyone when anything in it changes.
 
 - `name` is at most 24 characters.
 - `color` is one of `#f2b84b #5ec7e8 #ef6f8e #8bd17c #b28cf2 #f58d4e #4fd1b5 #e8e15e`; a receiver shows another one when the color is taken.
 - `notes` is how everyone shows the player's notes: `null` for their color, `{ mode: "rainbow" }`, or `{ mode: "custom", white, black }` with two `#rrggbb` colors for white and black keys.
+- `glow` is how bright everyone shows those notes, `[white, black]` from 0 (black) through 0.5 (the color itself) to 1 (pale); missing or invalid is 0.5.
 - `tags` are the tags the player shows, at most 3, from `dev`, `trusted` and `tester`.
 - `certs` are the tag certificates that give them; a receiver reads the first 20.
 - `untags` are the newest untag certificates the player has seen, at most 50.
@@ -192,4 +193,5 @@ Each message is played once its lateness reaches the 90th percentile of those, h
 ## Sound
 
 The receiver plays every player on its own synth with the same bank.
-Sustain is the synth's own CC64; sostenuto and soft are done by the receiver: sostenuto keeps the notes held when it went down sounding until it lifts, and soft scales velocity by 0.6.
+The pedals are done by the receiver: sustain keeps released notes sounding until it lifts, sostenuto keeps the notes held when it went down sounding until it lifts, and soft scales velocity by 0.6.
+A key struck again while a pedal holds it lets its old sound fade under the new one.

@@ -453,9 +453,8 @@ button.pedal:hover { background: var(--hover); color: var(--text); }
 [data-style=glow] .key.on::after {
     opacity: calc(0.55 + 0.4 * var(--a));
     background: linear-gradient(color-mix(in srgb, var(--c) 60%, white), var(--c) 70%);
-    box-shadow: 0 0 calc(24px * var(--glow-white, 0.5)) var(--c);
+    box-shadow: 0 0 calc(24px * var(--g, 0.5)) var(--c);
 }
-[data-style=glow] .key.black.on::after { box-shadow: 0 0 calc(24px * var(--glow-black, 0.5)) var(--c); }
 [data-style=glow] .key.white span { color: #000000a6; }
 
 /* PFA (Piano From Above): a red felt bar and bevelled keys, after Zenith's renderer */

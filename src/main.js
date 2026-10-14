@@ -192,7 +192,7 @@ function join() {
             const p = peer(id);
             p.sent = info;
             p.info = {
-                name: nameOf(p), color: freeColor(id, info?.color), notes: notesOf(info?.notes), tags: p.info.tags,
+                name: nameOf(p), color: freeColor(id, info?.color), notes: notesOf(info?.notes), glow: glowOf(info?.glow), tags: p.info.tags,
                 sf: typeof info?.sf === 'string' ? info.sf.slice(0, MAX_SF_NAME) : null,
             };
             for (const c of Array.isArray(info?.untags) ? info.untags.slice(0, MAX_SENT_UNTAGS) : []) if (await book.add(c)) retag();
@@ -586,6 +586,11 @@ function applyVolume(p) {
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 /** The note colours a player sent, { mode, white, black }, or null for their player colour. */
+/** A player's brightness of the notes of white and black keys, 0 to 1 each, or null for the colour itself. */
+function glowOf(g) {
+    return Array.isArray(g) && g.length === 2 && g.every(v => typeof v === 'number' && v >= 0 && v <= 1) ? [g[0], g[1]] : null;
+}
+
 function notesOf(n) {
     if (n?.mode === 'rainbow') return { mode: 'rainbow' };
     if (n?.mode === 'custom' && HEX_COLOR.test(n.white) && HEX_COLOR.test(n.black)) return { mode: 'custom', white: n.white, black: n.black };
@@ -759,7 +764,9 @@ function bindMidi() {
                     } else if (type === 0x90 || type === 0x80) {
                         if (held.delete(a)) local(0x80, a, 0);
                     } else if (type === 0xb0 && (a === 64 || a === 66 || a === 67)) {
-                        if (b < 64 || listening()) local(0xb0, a, b);
+                        // Inverted sustain turns the pedal round too: down while it is up
+                        const v = a === 64 && $('sus-invert').ariaPressed === 'true' ? 127 - b : b;
+                        if (v < 64 || listening()) local(0xb0, a, v);
                     }
                 };
                 const box = document.createElement('input');
@@ -857,12 +864,12 @@ function bindControls() {
         $('custom-colors').hidden = mode !== 'custom';
         for (const id of ['brightness', 'brightness-black']) $(id).closest('label').hidden = mode === 'custom';
         view.setStyle($('style').value);
-        view.setBrightness(+$('brightness').value / 100, +$('brightness-black').value / 100);
         view.setSpeed(+$('speed').value);
-        // Note colours are the player's own: everyone sees this player's notes in them
-        const was = JSON.stringify(me.notes);
+        // Note colours and their brightness are the player's own: everyone sees this player's notes in them
+        const was = JSON.stringify([me.notes, me.glow]);
         me.notes = notesOf({ mode, white: $('white-color').value, black: $('black-color').value });
-        if (JSON.stringify(me.notes) === was) return;
+        me.glow = [+$('brightness').value / 100, +$('brightness-black').value / 100];
+        if (JSON.stringify([me.notes, me.glow]) === was) return;
         view.repaint();
         clearTimeout(notesTimer);
         notesTimer = setTimeout(() => net?.setMe(me), 300); // a colour being dragged sends once it rests

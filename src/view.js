@@ -120,10 +120,9 @@ export class PianoView {
         this.trails = [];
         this.bloom = document.createElement('canvas');
         this.style = 'glow';
-        this.glow = 0.5; // the brighter of the two, for the bloom
-        this.glows = [0.5, 0.5]; // white keys, black keys
+        this.glow = 0; // the brightest note on the stage, for the bloom
         this.speed = DEFAULT_SPEED;
-        this.lights = [new Map(), new Map()]; // white keys, black keys: color -> color at their brightness
+        this.lights = new Map(); // "color brightness" -> the color at that brightness
         for (let n = LOW; n <= HIGH; n++) {
             const el = document.createElement('div');
             const box = BOXES.get(n);
@@ -220,18 +219,9 @@ export class PianoView {
         this.speed = pxPerS;
     }
 
-    /** Sets the brightness of the notes and lit keys, 0 to 1, of white keys and of black keys. */
-    setBrightness(white, black = white) {
-        this.glows = [white, black];
-        this.glow = Math.max(white, black);
-        for (const lit of this.lights) lit.clear();
-        this.root.style.setProperty('--glow-white', String(white));
-        this.root.style.setProperty('--glow-black', String(black));
-        for (const [note, list] of this.held) this.paint(note, list[list.length - 1]);
-    }
-
-    glowOf(note) {
-        return this.glows[isBlack(note) ? 1 : 0];
+    /** How bright a player's look { glow: [white, black] } shows a note, 0 to 1; 0.5 is the colour itself. */
+    glowOf(note, look) {
+        return look.glow?.[isBlack(note) ? 1 : 0] ?? 0.5;
     }
 
     /**
@@ -241,10 +231,12 @@ export class PianoView {
     colorOf(note, look) {
         const n = look.notes;
         const color = n?.mode === 'rainbow' ? RAINBOW.get(note) : n?.mode === 'custom' ? (isBlack(note) ? n.black : n.white) : look.color;
-        const black = isBlack(note);
-        const lit = black ? this.lights[1] : this.lights[0];
-        if (!lit.has(color)) lit.set(color, light(color, this.glows[black ? 1 : 0]));
-        return lit.get(color);
+        const glow = this.glowOf(note, look), key = `${color} ${glow}`;
+        if (!this.lights.has(key)) {
+            if (this.lights.size > 2000) this.lights.clear(); // brightness dragged through many values
+            this.lights.set(key, light(color, glow));
+        }
+        return this.lights.get(key);
     }
 
     bindPointer(keysEl, onPress) {
@@ -305,6 +297,7 @@ export class PianoView {
         if (top) {
             el.style.setProperty('--c', this.colorOf(note, top.look));
             el.style.setProperty('--a', String(0.45 + 0.55 * top.vel / 127));
+            el.style.setProperty('--g', String(this.glowOf(note, top.look)));
         }
     }
 
@@ -327,6 +320,7 @@ export class PianoView {
         const now = performance.now();
         const glow = this.style === 'glow';
         this.trails = this.trails.filter(t => t.end === null || (now - t.end) / 1000 * this.speed < h);
+        this.glow = this.trails.reduce((most, t) => Math.max(most, this.glowOf(t.note, t.look)), 0);
 
         const notes = NOTES[this.style];
         const zoom = WHITES / this.range.count, off = this.range.first / WHITES;
@@ -442,7 +436,7 @@ export class PianoView {
         for (const [note, { level, look }] of lit) {
             const box = BOXES.get(note);
             const r = box.w * zoom * w * 1.6;
-            g.globalAlpha = level * this.glowOf(note);
+            g.globalAlpha = level * this.glowOf(note, look);
             g.drawImage(sprite(this.colorOf(note, look)), (box.x + box.w / 2 - off) * zoom * w - r, h - r, 2 * r, 2 * r);
         }
     }
