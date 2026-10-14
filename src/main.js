@@ -78,6 +78,11 @@ let piano = null;
 let myHand = null;
 let loadedPiano = null;
 let transpose = 0;
+// While a MIDI device plays, the computer keys play no notes, and a MIDI note just struck by a key is not struck again
+const MIDI_KEYS_OFF_MS = 60000;
+const SAME_PRESS_MS = 150;
+let midiNoteAt = -Infinity;
+const keyNoteAt = new Map(); // note -> when a computer key last struck it
 let bankJob = Promise.resolve();
 let ownBuffer = null; // the soundfont the player opened, once read
 let keyboardVelocity = 100;
@@ -690,6 +695,8 @@ function bindKeyboard() {
             store.set('pr-velocity', String(keyboardVelocity));
             return;
         }
+        // A keyboard that also sends MIDI, such as a Wooting through QuartzMIDI, would play every note twice
+        if (performance.now() - midiNoteAt < MIDI_KEYS_OFF_MS) return;
         const note = action.note + transpose;
         if (note < 21 || note > 108) return;
         const notes = held.get(e.code) ?? [];
@@ -700,6 +707,7 @@ function bindKeyboard() {
             notes.push(note);
         }
         held.set(e.code, notes);
+        keyNoteAt.set(note, performance.now());
         local(0x90, note, keyboardVelocity);
         // Outside full screen the browser keeps Ctrl+W, Ctrl+T and Ctrl+N; its button lets them play
         if (e.ctrlKey && !document.fullscreenElement && !fullscreenHinted && !$('fullscreen').hidden) {
@@ -760,7 +768,11 @@ function bindMidi() {
                     if (type === 0x90 && b > 0) {
                         // Transpose shifts a MIDI device too, so a keyboard such as QuartzMIDI's plays along with the computer keys
                         const note = a + transpose;
-                        if (!listening() || note < 21 || note > 108) return;
+                        if (!listening()) return;
+                        midiNoteAt = performance.now();
+                        if (note < 21 || note > 108) return;
+                        // The same press, which reached the page as a key first: the key's note plays and its key releases it
+                        if (midiNoteAt - (keyNoteAt.get(note) ?? -Infinity) < SAME_PRESS_MS) return;
                         if (held.has(a)) local(0x80, held.get(a), 0);
                         held.set(a, note);
                         local(0x90, note, b);
