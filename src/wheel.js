@@ -73,7 +73,8 @@ export function colorWheel(input, { brightness = null, light = null } = {}) {
     pop.popover = 'auto';
     pop.innerHTML = `
         <div class="wheel-disc"><canvas tabindex="0" role="application" aria-roledescription="color wheel"></canvas><span class="wheel-mark"></span></div>
-        <input type="range" min="0" max="100" step="0.5" aria-label="Brightness">`;
+        <input type="range" min="0" max="100" step="0.5" aria-label="Brightness">
+        <div class="wheel-rgb">${['R', 'G', 'B'].map(c => `<label><span>${c}</span><input type="text" inputmode="numeric" maxlength="3" autocomplete="off" spellcheck="false"></label>`).join('')}</div>`;
     // Beside the label, not in it: a click in the popover must not reach the label's button
     (input.closest('label') || input).after(pop);
     swatch.popoverTargetElement = pop;
@@ -82,6 +83,7 @@ export function colorWheel(input, { brightness = null, light = null } = {}) {
     const canvas = pop.querySelector('canvas');
     const mark = pop.querySelector('.wheel-mark');
     const slider = pop.querySelector('input');
+    const fields = [...pop.querySelectorAll('.wheel-rgb input')];
     let painted = false;
 
     const hex = () => toHex(hsvToRgb(h, s, v));
@@ -100,6 +102,8 @@ export function colorWheel(input, { brightness = null, light = null } = {}) {
             slider.style.setProperty('--full', toHex(hsvToRgb(h, s, 1)));
         }
         canvas.ariaValueText = color;
+        // The field being typed in keeps what was typed
+        hsvToRgb(h, s, v).forEach((c, i) => { if (document.activeElement !== fields[i]) fields[i].value = c; });
     };
     const emit = () => {
         show();
@@ -159,6 +163,27 @@ export function colorWheel(input, { brightness = null, light = null } = {}) {
     });
     if (brightness) slider.step = brightness.step || '1';
 
+    // Typing red, green and blue, 0 to 255; Up and Down step by 1, or 10 with Shift
+    const typed = () => {
+        const rgb = fields.map(f => (/^\d{1,3}$/.test(f.value) ? Math.min(255, +f.value) : null));
+        if (rgb.includes(null)) return;
+        const [nh, ns, nv] = rgbToHsv(...rgb);
+        if (ns) h = nh; // grey has no hue; keep the last
+        if (nv) s = ns;
+        v = nv;
+        emit();
+    };
+    for (const f of fields) {
+        f.addEventListener('input', typed);
+        f.addEventListener('change', show); // tidies a field left empty or over 255
+        f.addEventListener('keydown', e => {
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+            e.preventDefault();
+            f.value = clamp((parseInt(f.value, 10) || 0) + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1), 0, 255);
+            typed();
+        });
+    }
+
     // Opening: read the input afresh and sit under the swatch, inside the window
     const place = (w, ht) => {
         const b = swatch.getBoundingClientRect();
@@ -172,7 +197,7 @@ export function colorWheel(input, { brightness = null, light = null } = {}) {
         if (e.newState !== 'open') return;
         if (!painted) { paintWheel(canvas); painted = true; }
         refresh();
-        place(SIZE + 26, SIZE + 52);
+        place(SIZE + 26, SIZE + 110);
     });
     pop.addEventListener('toggle', e => {
         if (e.newState === 'open') place(pop.offsetWidth, pop.offsetHeight);
