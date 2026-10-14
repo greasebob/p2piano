@@ -19,9 +19,10 @@ const PRELOAD_CHANNEL = 15;
 const SOFT_PEDAL_SCALE = 0.6;
 // The synth's default of 350 voices was too few for a held pedal; past this it cuts the quietest fading sounds
 const VOICE_CAP = 512;
-// The synth queues a message timed ahead but plays one that is due at once, even while earlier ones
-// still wait, so a release could land before its strike and leave the note ringing. Each message on a
-// key comes at least this long after the key's last one, longer than a render block, so it cannot.
+// The synth queues a timed message by its own clock, which runs about 100 ms behind the page's, and
+// plays an untimed one at once, even while earlier ones still wait, so a release could land before its
+// strike and leave the note ringing. Once a key has had a timed message, every later one is timed too,
+// at least this long after the last, longer than a render block, so the synth keeps them in order.
 const KEY_ORDER_S = 0.01;
 
 /** Downloads a bank, or reads it from Cache Storage if it was downloaded before. */
@@ -150,21 +151,37 @@ export class Hand {
         this.sustain = false;
         this.sostenuto = false;
         this.soft = false;
-        this.keyAt = new Map(); // key -> AudioContext time of its last message to the synth
+        this.keyAt = new Map(); // key -> AudioContext time of its last timed message to the synth
+        this.sounding = new Set(); // keys struck in the synth and not yet released there
     }
 
-    /** The timing for a message on a key at `at` (0 for now), kept after the key's last message. */
+    /**
+     * The timing for a message on a key at `at` (0 for now). Untimed messages reach the synth in the
+     * order sent, so a key that never had a timed one plays at once; after that it is timed, kept after its last.
+     */
     timed(note, at) {
         const last = this.keyAt.get(note);
-        const now = this.synth.currentTime;
-        const time = last === undefined ? at : Math.max(at || now, last + KEY_ORDER_S);
-        this.keyAt.set(note, Math.max(time, now));
-        return time > now ? { time } : undefined;
+        if (!at && last === undefined) return undefined;
+        const time = Math.max(at || this.synth.currentTime, (last ?? -Infinity) + KEY_ORDER_S);
+        this.keyAt.set(note, time);
+        return { time };
     }
 
-    on(note, vel, at) { this.synth.noteOn(this.ch, note, vel, this.timed(note, at)); }
+    /**
+     * The synth pairs each release with the oldest unreleased strike of its key, so a key struck twice
+     * before a release would stay one release behind and ring on after every later one. A key's last
+     * sound is released before it is struck again, so each key has at most one in the synth.
+     */
+    on(note, vel, at) {
+        if (this.sounding.has(note)) this.off(note, at);
+        this.synth.noteOn(this.ch, note, vel, this.timed(note, at));
+        this.sounding.add(note);
+    }
 
-    off(note, at) { this.synth.noteOff(this.ch, note, this.timed(note, at)); }
+    off(note, at) {
+        this.sounding.delete(note);
+        this.synth.noteOff(this.ch, note, this.timed(note, at));
+    }
 
     /** Handles one MIDI message. `at` is an AudioContext time, or 0 for now; `delay` is the same in ms from now. */
     midi(status, a, b, at, delay = 0) {
@@ -172,8 +189,9 @@ export class Hand {
         if (type === 0x90 && b > 0) {
             const vel = this.soft ? Math.max(1, Math.round(b * SOFT_PEDAL_SCALE)) : b;
             this.down.add(a);
-            // The key's last sound, still held by a pedal, fades under the new one
-            if (this.waiting.delete(a) | this.ringing.delete(a)) this.off(a, at);
+            // The key's last sound, still held by a pedal or by a strike with no release, fades under the new one
+            this.waiting.delete(a);
+            this.ringing.delete(a);
             this.on(a, vel, at);
             this.onKey(a, b, delay);
         } else if (type === 0x80 || type === 0x90) {
@@ -210,7 +228,7 @@ export class Hand {
     /** Releases all keys and pedals. */
     release() {
         for (const n of this.down) this.onKey(n, 0, 0);
-        for (const n of new Set([...this.down, ...this.waiting, ...this.ringing])) this.off(n, 0);
+        for (const n of [...this.sounding]) this.off(n, 0);
         this.down.clear();
         this.caught.clear();
         this.waiting.clear();
