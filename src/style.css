@@ -245,7 +245,7 @@ header {
 .tag-dev { background: linear-gradient(135deg, #b28cf2, #5ec7e8); color: #0d0b14; }
 .tag-trusted { background: #8bd17c; color: #0d140b; }
 .tag-tester { background: #f58d4e; color: #140d0b; }
-.tag-troll { background: #ef6f8e; color: #140b0d; }
+.tag-mod { background: #ef6f8e; color: #140b0d; }
 .tag-list { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .tag-list[hidden], .account[hidden], .pm-tags[hidden] { display: none; }
 

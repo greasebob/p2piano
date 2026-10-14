@@ -75,7 +75,7 @@ Sent to each peer as it joins, and to everyone when anything in it changes.
 - `color` is one of `#f2b84b #5ec7e8 #ef6f8e #8bd17c #b28cf2 #f58d4e #4fd1b5 #e8e15e`; a receiver shows another one when the color is taken.
 - `notes` is how everyone shows the player's notes: `null` for their color, `{ mode: "rainbow" }`, or `{ mode: "custom", white, black }` with two `#rrggbb` colors for white and black keys.
 - `glow` is how bright everyone shows those notes, `[white, black]` from 0 (black) through 0.5 (the color itself) to 1 (pale); missing or invalid is 0.5.
-- `tags` are the tags the player shows, at most 3, from `dev`, `trusted`, `tester` and `troll`.
+- `tags` are the tags the player shows, at most 3, from `dev`, `trusted`, `tester` and `mod`.
 - `certs` are the tag certificates that give them; a receiver reads the first 20.
 - `untags` are the newest untag certificates the player has seen, at most 50.
 
@@ -113,7 +113,7 @@ A tag certificate goes to its player; an untag goes to everyone.
 
 `"jumpscare"`
 
-A prank sent to one player. The receiver plays it only when the sender holds `dev` or `troll` (see Tags), and at most once every 5 s: a face fills the screen for 1.5 s with a scream.
+A prank sent to one player. The receiver plays it only when the sender holds `dev` or `mod` (see Tags), and at most once every 5 s: a face fills the screen for 1.5 s with a scream.
 
 ### `chat`
 
@@ -171,7 +171,7 @@ BOmfIhE9ZOFHXAdm2wCn9iHrULtPf9qc20uLaXo2DV6XSTEIiafLMLQ1F6k82wnPzcTMtrQbAP2zhSnj
 The root key holds `dev` with no certificate.
 Only the root gives `dev`, and only to accounts.
 
-A player whose account holds `dev` signs `trusted`, `tester` and `troll` with their own key and sets `by` to `{ att, dev }`.
+A player whose account holds `dev` signs `trusted`, `tester` and `mod` with their own key and sets `by` to `{ att, dev }`.
 Here `att` is the accounts service's attestation of that key, which may have run out, and `dev` is the root's `dev` certificate for an account in it.
 
 An untag takes back every certificate for the same tag and subject with an `n` no later than its own.
