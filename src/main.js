@@ -512,11 +512,12 @@ function setTranspose(value) {
     $('transpose').textContent = text;
     $('transpose').setAttribute('aria-label', `Transpose ${text}, reset`);
     store.set('pr-transpose', String(transpose));
-    if ($('labels').value === 'qwerty') view.setLabels(keyLabels(transpose));
+    if ($('labels').value === 'qwerty') view.setLabels(labelsFor('qwerty'));
 }
 
 function labelsFor(mode) {
-    return mode === 'notes' ? noteLabels() : keyLabels(transpose);
+    // Off by default the labels stay put, each key showing its own letter whatever the transpose
+    return mode === 'notes' ? noteLabels() : keyLabels($('labels-transpose').checked ? transpose : 0);
 }
 
 function peer(id) {
@@ -679,7 +680,7 @@ function bindKeyboard() {
             }
             return;
         }
-        if (e.code in TRANSPOSE_KEYS && $('arrow-transpose').checked && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (e.code in TRANSPOSE_KEYS && !e.ctrlKey && !e.altKey && !e.metaKey) {
             e.preventDefault();
             setTranspose(transpose + TRANSPOSE_KEYS[e.code]);
             return;
@@ -911,21 +912,12 @@ function bindControls() {
         button.addEventListener('click', () => setTranspose(transpose + Number(button.dataset.transpose)));
     }
     $('transpose').addEventListener('click', () => setTranspose(0));
-    // Off by default: a stray arrow press transposed the keys without the player noticing
-    const arrows = $('arrow-transpose');
-    const showArrows = () => {
-        for (const button of document.querySelectorAll('[data-transpose]')) {
-            const key = Object.keys(TRANSPOSE_KEYS).find(k => TRANSPOSE_KEYS[k] === +button.dataset.transpose);
-            const symbol = { ArrowLeft: '←', ArrowRight: '→', ArrowDown: '↓', ArrowUp: '↑' }[key];
-            button.title = arrows.checked ? `${button.ariaLabel} (${symbol})` : button.ariaLabel;
-        }
-    };
-    arrows.checked = store.get('pr-arrow-transpose', '0') === '1';
-    arrows.addEventListener('change', () => {
-        store.set('pr-arrow-transpose', arrows.checked ? '1' : '0');
-        showArrows();
+    const follow = $('labels-transpose');
+    follow.checked = store.get('pr-labels-transpose', '0') === '1';
+    follow.addEventListener('change', () => {
+        store.set('pr-labels-transpose', follow.checked ? '1' : '0');
+        view.setLabels(labelsFor($('labels').value));
     });
-    showArrows();
     setTranspose(+store.get('pr-transpose', '0') || 0);
 
     const ownName = store.get('pr-own-name', '');

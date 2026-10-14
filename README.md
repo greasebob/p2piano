@@ -12,7 +12,7 @@ Play from a MIDI keyboard, the mouse, or the computer keyboard with the Roblox p
 - Ctrl+`1`-`t` A0-B1, Ctrl+`y`-`j` C#7-C8
 - Alt+`1`-`c` velocity, 32 levels
 - Space sustain, `]` sostenuto; Invert beside the Sustain chip holds the pedal down until Space
-- With Arrow keys transpose on in Settings, left and right transpose by a semitone, down and up by an octave
+- Arrow keys transpose: left and right by a semitone, down and up by an octave; the key labels move with it only with Labels follow transpose on in Settings
 - / or Enter opens the chat, Enter sends, Escape goes back to the piano
 
 Chrome keeps Ctrl+W and Ctrl+T for itself unless the room is full screen.
