@@ -114,6 +114,7 @@
         <label class="pm-volume"><i data-lucide="volume-2"></i><input id="pm-volume" type="range" min="0" max="100" aria-label="Volume"><output id="pm-volume-val" for="pm-volume"></output></label>
         <button id="pm-play" type="button" class="toggle" aria-pressed="false"><i data-lucide="volume-x"></i><span>Mute playing</span></button>
         <button id="pm-chat" type="button" class="toggle" aria-pressed="false"><i data-lucide="message-square-off"></i><span>Mute chat</span></button>
+        <button id="pm-scare" type="button" hidden><i data-lucide="ghost"></i><span>Jumpscare</span></button>
         <div id="pm-tags" class="pm-tags" hidden></div>
         <div id="pm-hosting">
             <button id="pm-host" type="button"><i data-lucide="crown"></i><span>Make host</span></button>
@@ -121,6 +122,8 @@
             <button id="pm-ban" type="button" class="danger"><i data-lucide="ban"></i><span>Ban</span></button>
         </div>
     </div>
+
+    <div id="jumpscare" popover="manual" aria-hidden="true"><img alt=""></div>
 
     <aside id="players" aria-label="Players">
         <h2><button id="players-toggle" type="button" title="Players" aria-expanded="false"><i data-lucide="users"></i><span id="people-count"></span></button></h2>

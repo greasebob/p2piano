@@ -43,7 +43,7 @@ async function passProof(roomId, nonce, password) {
  * Joins a room. `ident` is this browser's identity, `since` when this player entered the room.
  * handlers:
  *   onPeer(id, info), onLeave(id), onMidi(id, status, a, b, holdMs), onPing(id, ms), onChat(id, text),
- *   onRoom(id, state), onMod(id, msg), onCert(id, cert), onCursor(id, [x, y] or null, holdMs),
+ *   onRoom(id, state), onMod(id, msg), onCert(id, cert), onCursor(id, [x, y] or null, holdMs), onTroll(id, kind),
  *   chain() the ownership chain to hand on, offerChain(chain) one a peer handed on,
  *   att() this player's account attestation or null, accountOf(att, key) the account ids a peer's proves or null,
  *   refuse(id, them) 'ban', 'kick' or null for a peer about to join,
@@ -90,6 +90,7 @@ export function connect(roomId, me, ident, since, handlers) {
     const mod = room.makeAction('mod');
     const cert = room.makeAction('cert');
     const cur = room.makeAction('cur');
+    const troll = room.makeAction('troll');
     const peers = new Map(); // id -> { lateness: number[], lastS, lastAt }
     let queue = null;
     let sentAt = -Infinity; // when the last MIDI message went out
@@ -117,6 +118,7 @@ export function connect(roomId, me, ident, since, handlers) {
     state.onMessage = from((data, peerId) => handlers.onRoom(peerId, data));
     mod.onMessage = from((data, peerId) => handlers.onMod(peerId, data));
     cert.onMessage = from((data, peerId) => handlers.onCert(peerId, data));
+    troll.onMessage = from((data, peerId) => handlers.onTroll(peerId, data));
     // A pointer is shown as late as the notes are, so a drag along the keys stays under its notes
     cur.onMessage = from((msg, peerId) => {
         const p = peer(peerId);
@@ -231,6 +233,10 @@ export function connect(roomId, me, ident, since, handlers) {
          */
         cursor(pos, t) {
             everyone(cur, pos && [pos[0], pos[1], Math.round(t * 10) / 10]);
+        },
+        /** Sends a prank, such as 'jumpscare', to one peer; only a Dev's is played. */
+        troll(kind, target) {
+            troll.send(kind, { target });
         },
         /** Stops talking to a peer; it is refused if it connects again. */
         block(id) {

@@ -142,6 +142,23 @@ input:not([type]):focus, input[type=text]:focus { border-color: var(--accent); o
 #player-menu button svg { width: 16px; height: 16px; color: var(--muted); }
 #player-menu button[aria-pressed=true] { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 #player-menu button[aria-pressed=true] svg { color: currentColor; }
+#player-menu button[hidden] { display: none; }
+
+/* A Dev's jumpscare, over everything */
+#jumpscare { position: fixed; inset: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: #000; overflow: hidden; }
+#jumpscare::backdrop { background: #000; }
+#jumpscare img { width: 100%; height: 100%; object-fit: contain; }
+#jumpscare.go img { animation: lunge 1.5s ease-out both; }
+@keyframes lunge {
+    0% { transform: scale(0.3); filter: brightness(2.5); }
+    5% { transform: scale(1.12); filter: brightness(1.4); }
+    9% { transform: scale(1.04) translate(-1.5%, 1%); }
+    13% { transform: scale(1.08) translate(1.5%, -1%); }
+    17% { transform: scale(1.05) translate(-1%, -1%); }
+    21%, 85% { transform: scale(1.06); filter: none; }
+    100% { transform: scale(1.1); opacity: 0; }
+}
+
 #pm-hosting { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
 #pm-hosting[hidden] { display: none; }
 .pm-tags { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); }

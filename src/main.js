@@ -3,7 +3,7 @@ import {
     createIcons, createElement, Link, Check, Maximize, Minimize, Settings, LogIn, Plus, Keyboard,
     ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp, Users,
     Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2, LogOut, Merge, X, Tag, FolderOpen, Pencil, Piano,
-    Smile,
+    Smile, Ghost,
 } from 'lucide';
 import { siDiscord, siRoblox } from 'simple-icons';
 import { BANKS, loadBank, createPiano, Hand, keepOwnBank, ownBank, isSoundBank } from './audio.js';
@@ -15,12 +15,14 @@ import { TAGS, GIVEN, ROOT_ID, TagBook, checkAtt, makeCert } from './certs.js';
 import { Accounts, accountsOn, ACCOUNTS_KEY } from './accounts.js';
 import { colorWheel } from './wheel.js';
 import { bindEmoji } from './emoji.js';
+import screamUrl from './troll/jumpscare.wav?url';
+import scareUrl from './troll/jumpscare.png?url';
 
 const ICONS = {
     Link, Check, Maximize, Minimize, Settings, LogIn, Plus, Keyboard,
     ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowDownUp, Users,
     Crown, UserX, Ban, Volume2, VolumeX, MessageSquareOff, Lock, LockOpen, Undo2, LogOut, Merge, X, Tag, FolderOpen, Pencil, Piano,
-    Smile,
+    Smile, Ghost,
 };
 const COLORS = ['#f2b84b', '#5ec7e8', '#ef6f8e', '#8bd17c', '#b28cf2', '#f58d4e', '#4fd1b5', '#e8e15e'];
 const PEER_CHANNELS = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]; // 0 is ours, 9 is drums, 15 preloads
@@ -264,6 +266,10 @@ function join() {
         },
         onCert(id, cert) {
             takeCert(cert).catch(() => {});
+        },
+        onTroll(id, kind) {
+            // Only a Dev can troll; anyone else's is dropped
+            if (kind === 'jumpscare' && peers.get(id)?.held?.has('dev')) jumpscare();
         },
     });
 }
@@ -1205,9 +1211,30 @@ function renderPeople() {
 
 let menuPeer = null;
 
+// A Dev's jumpscare: the face fills the screen with a scream, at most once every few seconds
+const JUMPSCARE_MS = 1500;
+const JUMPSCARE_GAP_MS = 5000;
+const scream = new Audio(screamUrl);
+scream.preload = 'auto';
+let scaredAt = -Infinity;
+
+function jumpscare() {
+    if (performance.now() - scaredAt < JUMPSCARE_GAP_MS) return;
+    scaredAt = performance.now();
+    const box = $('jumpscare');
+    box.classList.remove('go');
+    box.showPopover();
+    void box.offsetWidth; // restarts the lunge
+    box.classList.add('go');
+    scream.currentTime = 0;
+    scream.play().catch(() => {});
+    setTimeout(() => box.hidePopover(), JUMPSCARE_MS);
+}
+
 function bindPlayerMenu() {
     const menu = $('player-menu');
     const current = () => peers.get(menuPeer);
+    $('jumpscare').querySelector('img').src = scareUrl; // loaded now, so a scare shows at once
     menu.addEventListener('toggle', e => {
         if (e.newState === 'closed') {
             menuPeer = null;
@@ -1227,6 +1254,11 @@ function bindPlayerMenu() {
             $(id).ariaPressed = String(Boolean(muteOf(p)[field]));
         });
     }
+    $('pm-scare').addEventListener('click', () => {
+        const p = current();
+        menu.hidePopover();
+        if (p && held.has('dev')) net?.troll('jumpscare', p.id);
+    });
     // Kick acts at once; Ban and Make host ask for a second click.
     $('pm-kick').addEventListener('click', () => {
         const p = current();
@@ -1299,6 +1331,7 @@ function openPlayerMenu(p, anchor) {
     $('pm-volume-val').value = `${$('pm-volume').value}%`;
     $('pm-play').ariaPressed = String(Boolean(m.play));
     $('pm-chat').ariaPressed = String(Boolean(m.chat));
+    $('pm-scare').hidden = !held.has('dev');
     const owner = p.ident?.key === ownerKey;
     $('pm-hosting').hidden = !amHost() || owner;
     $('pm-host').hidden = ownerKey !== ident.key || !p.ident;

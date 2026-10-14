@@ -109,6 +109,12 @@ A message from the host; a receiver ignores it from anyone else.
 A tag certificate.
 A tag certificate goes to its player; an untag goes to everyone.
 
+### `troll`
+
+`"jumpscare"`
+
+A prank sent to one player. The receiver plays it only when the sender holds `dev` (see Tags), and at most once every 5 s: a face fills the screen for 1.5 s with a scream.
+
 ### `chat`
 
 `string`
