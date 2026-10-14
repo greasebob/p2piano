@@ -11,7 +11,7 @@ import { connect, selfId, MAX_CHAT } from './net.js';
 import { PianoView, STYLES, DEFAULT_SPEED, light } from './view.js';
 import { keyAction, keyLabels, noteLabels, levelVelocity, SUSTAIN_CODE, SOSTENUTO_CODE } from './keys.js';
 import { loadIdentity, importIdentity, roomCode, newSalt, chainOwner, handoverText } from './identity.js';
-import { TAGS, GIVEN, ROOT_ID, TagBook, checkAtt, makeCert } from './certs.js';
+import { TAGS, GIVEN, ROOT_ID, TagBook, checkAtt, makeCert, trolls } from './certs.js';
 import { Accounts, accountsOn, ACCOUNTS_KEY } from './accounts.js';
 import { colorWheel } from './wheel.js';
 import { bindEmoji } from './emoji.js';
@@ -270,7 +270,7 @@ function join() {
         },
         onTroll(id, kind) {
             // Only a Dev can troll; anyone else's is dropped
-            if (kind === 'jumpscare' && peers.get(id)?.held?.has('dev')) jumpscare();
+            if (kind === 'jumpscare' && trolls(peers.get(id)?.held)) jumpscare();
         },
     });
 }
@@ -1264,7 +1264,7 @@ function bindPlayerMenu() {
     $('pm-scare').addEventListener('click', () => {
         const p = current();
         menu.hidePopover();
-        if (p && held.has('dev')) net?.troll('jumpscare', p.id);
+        if (p && trolls(held)) net?.troll('jumpscare', p.id);
     });
     // Kick acts at once; Ban and Make host ask for a second click.
     $('pm-kick').addEventListener('click', () => {
@@ -1338,7 +1338,7 @@ function openPlayerMenu(p, anchor) {
     $('pm-volume-val').value = `${$('pm-volume').value}%`;
     $('pm-play').ariaPressed = String(Boolean(m.play));
     $('pm-chat').ariaPressed = String(Boolean(m.chat));
-    $('pm-scare').hidden = !held.has('dev');
+    $('pm-scare').hidden = !trolls(held);
     const owner = p.ident?.key === ownerKey;
     $('pm-hosting').hidden = !amHost() || owner;
     $('pm-host').hidden = ownerKey !== ident.key || !p.ident;

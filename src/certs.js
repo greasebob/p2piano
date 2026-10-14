@@ -18,9 +18,12 @@ export const TAGS = {
     dev: { label: 'Dev' },
     trusted: { label: 'Trusted' },
     tester: { label: 'Tester' },
+    troll: { label: 'Troll' },
 };
 /** The tags a Dev gives and takes back from the player menu. Dev itself only the root gives. */
-export const GIVEN = ['trusted', 'tester'];
+export const GIVEN = ['trusted', 'tester', 'troll'];
+/** Whether a player holding these tags may send pranks such as the jumpscare. */
+export const trolls = held => !!held && (held.has('dev') || held.has('troll'));
 const MAX_UNTAGS = 500;
 
 export const tagText = (kind, tag, sub, n) => `p2piano|${kind}|${tag}|${sub}|${n}`;
