@@ -658,7 +658,8 @@ function bindKeyboard() {
         if (isText(e.target)) return;
         if (isTabbed(e.target)) {
             if (e.code === 'Escape' && !e.target.closest('[popover]')) e.target.blur();
-            if (CONTROL_KEYS.has(e.code)) return;
+            // The arrows stay with a control that uses them, such as a slider; a button or check box has no use for them
+            if (CONTROL_KEYS.has(e.code) && (!e.code.startsWith('Arrow') || e.target.matches('input[type=range], select, [role=slider], [role=radio]'))) return;
         }
         if (e.code === 'Enter' || e.code === 'NumpadEnter' || (e.key === '/' && !e.ctrlKey && !e.altKey && !e.metaKey)) {
             e.preventDefault();
@@ -809,9 +810,12 @@ function bindMidi() {
 // Header and settings
 
 function bindControls() {
-    // A clicked button gives focus back, so Space and Enter do not press it again while playing.
+    // A clicked button or check box gives focus back, so Space, Enter and the arrows go to the piano.
     document.addEventListener('click', e => {
-        if (e.detail > 0 && e.target.closest('button')) e.target.closest('button').blur();
+        if (e.detail === 0) return;
+        if (e.target.closest('button')) e.target.closest('button').blur();
+        const box = e.target.closest('label')?.querySelector('input[type=checkbox]');
+        if (box) setTimeout(() => box.blur()); // after the label's click has focused it
     });
     $('invite').addEventListener('click', async () => {
         try {
