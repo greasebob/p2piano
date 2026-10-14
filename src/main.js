@@ -500,7 +500,7 @@ function sharePiano() {
     renderPeople();
 }
 
-/** Shifts the computer keyboard's notes by `value` semitones. */
+/** Shifts the notes of the computer keyboard and MIDI devices by `value` semitones. */
 function setTranspose(value) {
     transpose = Math.max(-MAX_TRANSPOSE, Math.min(MAX_TRANSPOSE, value));
     const text = transpose > 0 ? `+${transpose}` : String(transpose);
@@ -746,7 +746,7 @@ function bindMidi() {
         return document.hasFocus() && (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && ['text', 'password', 'search'].includes(el.type)));
     };
     const listening = () => !typing();
-    const held = new Set(); // keys a MIDI press put down
+    const held = new Map(); // key a MIDI press put down -> the note it played, transposed when pressed
     navigator.requestMIDIAccess().then(access => {
         const off = new Set(JSON.parse(store.get('pr-midi-off', '[]')));
         const list = () => {
@@ -758,11 +758,15 @@ function bindMidi() {
                     const [status, a = 0, b = 0] = m.data;
                     const type = status & 0xf0;
                     if (type === 0x90 && b > 0) {
-                        if (!listening()) return;
-                        held.add(a);
-                        local(0x90, a, b);
+                        // Transpose shifts a MIDI device too, so a keyboard such as QuartzMIDI's plays along with the computer keys
+                        const note = a + transpose;
+                        if (!listening() || note < 21 || note > 108) return;
+                        if (held.has(a)) local(0x80, held.get(a), 0);
+                        held.set(a, note);
+                        local(0x90, note, b);
                     } else if (type === 0x90 || type === 0x80) {
-                        if (held.delete(a)) local(0x80, a, 0);
+                        if (held.has(a)) local(0x80, held.get(a), 0);
+                        held.delete(a);
                     } else if (type === 0xb0 && (a === 64 || a === 66 || a === 67)) {
                         // Inverted sustain turns the pedal round too: down while it is up
                         const v = a === 64 && $('sus-invert').ariaPressed === 'true' ? 127 - b : b;
