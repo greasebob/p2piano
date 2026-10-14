@@ -84,6 +84,7 @@ let transpose = 0;
 const MIDI_KEYS_OFF_MS = 60000;
 const SAME_PRESS_MS = 150;
 let midiNoteAt = -Infinity;
+let midiSustainHeld = false; // a MIDI device's sustain pedal is down, before any invert
 const keyNoteAt = new Map(); // note -> when a computer key last struck it
 let bankJob = Promise.resolve();
 let ownBuffer = null; // the soundfont the player opened, once read
@@ -748,6 +749,10 @@ function bindKeyboard() {
         for (const code of pedals) pedal(code, false);
         pedals.clear();
     });
+    // Back from another window, inverted sustain is down again unless the pedal key is held
+    window.addEventListener('focus', () => {
+        if (inverted(SUSTAIN_CODE) && !midiSustainHeld && sustain < 64) pedal(SUSTAIN_CODE, false);
+    });
 }
 
 // MIDI inputs
@@ -789,8 +794,10 @@ function bindMidi() {
                         held.delete(a);
                     } else if (type === 0xb0 && (a === 64 || a === 66 || a === 67)) {
                         // Inverted sustain turns the pedal round too: down while it is up
+                        // A pedal let go always counts, as a key does; under invert that puts sustain back down
+                        if (a === 64) midiSustainHeld = b >= 64;
                         const v = a === 64 && $('sus-invert').ariaPressed === 'true' ? 127 - b : b;
-                        if (v < 64 || listening()) local(0xb0, a, v);
+                        if (b < 64 || listening()) local(0xb0, a, v);
                     }
                 };
                 const box = document.createElement('input');
