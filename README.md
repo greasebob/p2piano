@@ -25,11 +25,9 @@ npm run dev
 npm run build
 ```
 
-The pianos are built from FreePats' `SalamanderGrandPiano-V3+20200602.sf2` with Python 3, numpy and ffmpeg:
+The Salamander piano is built from FreePats' `SalamanderGrandPiano-V3+20200602.sf2` with Python 3, numpy and ffmpeg:
 
 ```
-python tools/build_bank.py SalamanderGrandPiano-V3+20200602.sf2 salamander-8.sf2 8
-node tools/to_sf3.mjs salamander-8.sf2 public/soundfonts/salamander-grand-v1.sf3 8
 python tools/build_bank.py SalamanderGrandPiano-V3+20200602.sf2 salamander-16.sf2 16
 node tools/to_sf3.mjs salamander-16.sf2 public/soundfonts/salamander-grand-16-v1.sf3 8
 ```

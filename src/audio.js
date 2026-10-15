@@ -6,7 +6,6 @@ import limiterUrl from './limiter.worklet.js?url&no-inline';
 // `level` in dB evens out how loud they are, so the louder Amethyst banks do not drive the limiter hard.
 const SOUNDFONTS = `${import.meta.env.BASE_URL}soundfonts`;
 export const BANKS = {
-    'salamander-8': { url: `${SOUNDFONTS}/salamander-grand-v1.sf3`, strikes: [20, 40, 50, 64, 80, 96, 112, 125] },
     'salamander-16': { url: `${SOUNDFONTS}/salamander-grand-16-v1.sf3`, strikes: [13, 30, 35, 40, 45, 48, 53, 60, 68, 76, 84, 92, 100, 108, 116, 124] },
     'amethyst-studio': { url: `${SOUNDFONTS}/amethyst-studio-v1.sf3`, strikes: [100], level: -2 },
     'amethyst-hall': { url: `${SOUNDFONTS}/amethyst-hall-v1.sf3`, strikes: [100], level: -4.5 },

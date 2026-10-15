@@ -475,9 +475,9 @@ async function fetchBank(id) {
     if (id === 'own') {
         ownBuffer ??= await ownBank();
         if (ownBuffer) return ownBuffer.slice(0); // the synth takes the copy it is given
-        $('piano').value = 'salamander-8'; // the saved file is gone
-        store.set('pr-piano', 'salamander-8');
-        id = 'salamander-8';
+        $('piano').value = 'salamander-16'; // the saved file is gone
+        store.set('pr-piano', 'salamander-16');
+        id = 'salamander-16';
     }
     return loadBank(BANKS[id].url, f => setStatus('Piano', false, f * 0.8));
 }
@@ -936,8 +936,8 @@ function bindControls() {
     const ownName = store.get('pr-own-name', '');
     $('own-piano').textContent = ownName;
     $('own-piano').hidden = !ownName;
-    const savedPiano = store.get('pr-piano', 'salamander-8');
-    $('piano').value = savedPiano in BANKS && (savedPiano !== 'own' || ownName) ? savedPiano : 'salamander-8';
+    const savedPiano = store.get('pr-piano', 'salamander-16');
+    $('piano').value = savedPiano in BANKS && (savedPiano !== 'own' || ownName) ? savedPiano : 'salamander-16';
     $('open-piano').addEventListener('click', () => $('piano-file').click());
     $('piano-file').addEventListener('change', async () => {
         const file = $('piano-file').files[0];
