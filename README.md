@@ -41,11 +41,20 @@ python tools/build_amethyst.py AmethystImperialGrand-2.0 hall amethyst-hall.sf2
 node tools/to_sf3.mjs amethyst-hall.sf2 public/soundfonts/amethyst-hall-v1.sf3
 ```
 
+The bitKlavier Grand is built from its [HouseORTF 44.1 kHz set](https://archive.org/details/bitKlavierGrand_HouseORTF_44k16b). It is too big for the site, so it lives in the accounts worker's private R2 bucket and the page fetches it from the worker's `/banks` route:
+
+```
+python tools/build_bitklavier.py bitKlavierGrand_HouseORTF_44k16b bitklavier-grand.sf2
+node tools/to_sf3.mjs bitklavier-grand.sf2 bitklavier-grand-v1.sf3
+cd worker && npx wrangler r2 object put p2piano-banks/bitklavier-grand-v1.sf3 --file ../bitklavier-grand-v1.sf3 --remote
+```
+
 The protocol is in [PROTOCOL.md](PROTOCOL.md).
 
 ## Credits
 
-- Piano: [Salamander Grand Piano](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html) by Alexander Holm, [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/); SF2 by FreePats. Resampled to 44.1 kHz, as 8 or all 16 velocity layers, and compressed to SF3.
+- Piano: [Salamander Grand Piano](https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html) by Alexander Holm, [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/); SF2 by FreePats. Resampled to 44.1 kHz and compressed to SF3.
+- Piano: [bitKlavier Grand](https://bitklavier.com/the-bitklavier-grand/) by Princeton University, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Its HouseORTF set, mapped to SF2 by `tools/build_bitklavier.py`, levelled per layer and compressed to SF3.
 - Piano: [Amethyst Imperial Grand](https://github.com/MyBlackMIDIScore/AmethystImperialGrand) by MBMS. Samples [CC BY-ND 4.0](https://creativecommons.org/licenses/by-nd/4.0/), unmodified and converted to SF3; its SFZ settings, GPL-2.0, mapped to SF2 generators by `tools/build_amethyst.py`.
 - Synth: [SpessaSynth](https://github.com/spessasus/SpessaSynth), Apache 2.0.
 - Connections: [Trystero](https://github.com/dmotz/trystero), MIT.

@@ -14,3 +14,8 @@ ROBLOX_REDIRECT = "https://greasebob.github.io/p2piano/roblox/"
 binding = "DB"
 database_name = "p2piano"
 database_id = "e055cbec-7846-424b-b48f-182d2b0515ce"
+
+# Private: read only through the worker's /banks route, which caps reads a month
+[[r2_buckets]]
+binding = "BANKS"
+bucket_name = "p2piano-banks"

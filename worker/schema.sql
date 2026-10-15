@@ -20,3 +20,5 @@ CREATE TABLE IF NOT EXISTS declined (account TEXT NOT NULL, other TEXT NOT NULL,
 -- Tag certificates for accounts, so tags follow a player to every browser, and the untags that took some back.
 CREATE TABLE IF NOT EXISTS certs (account TEXT NOT NULL, tag TEXT NOT NULL, n INTEGER NOT NULL, cert TEXT NOT NULL, PRIMARY KEY (account, tag));
 CREATE TABLE IF NOT EXISTS untags (sub TEXT NOT NULL, tag TEXT NOT NULL, n INTEGER NOT NULL, cert TEXT NOT NULL, PRIMARY KEY (sub, tag));
+-- Sound bank downloads a month (YYYY-MM), counted so R2's free reads are never passed.
+CREATE TABLE IF NOT EXISTS bank_reads (month TEXT PRIMARY KEY, n INTEGER NOT NULL);

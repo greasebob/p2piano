@@ -10,6 +10,7 @@
 //   ATTEST_KEY      the ECDSA P-256 private key (JWK) attestations are signed with
 //   IP_SALT         the secret addresses are hashed with; addresses themselves are never stored
 //   FAKE_LOGIN      '1' only for local tests: a 'fake' provider that signs in whoever is named
+//   BANKS           the R2 bucket of sound banks too big for the site, served at /banks/<file>
 
 import { b64, verify } from '../../src/identity.js';
 import { attText, checkCert, MAX_VIA } from '../../src/certs.js';
@@ -21,6 +22,8 @@ const PENDING_MS = 10 * 60e3;
 const CODE_MS = 60e3;
 const ATTEST_SKEW_MS = 5 * 60e3;
 const MAX_UNTAGS = 200;
+const BANK_FILES = new Set(['bitklavier-grand-v1.sf3']);
+const BANK_READS_PER_MONTH = 9e6;
 const enc = new TextEncoder();
 
 const PROVIDERS = {
@@ -102,6 +105,7 @@ async function route(request, env, url) {
     if (!post && first === 'providers') return json({ providers: Object.keys(PROVIDERS).filter(n => env[`${n.toUpperCase()}_CLIENT_ID`]) });
     if (!post && first === 'login') return login(env, url, second);
     if (!post && first === 'callback') return callback(request, env, url, second);
+    if (!post && first === 'banks') return bank(env, second);
     if (post && first === 'redeem') return redeem(env, await body(request));
     if (post && first === 'certs') return putCert(env, await body(request));
     if (post) {
@@ -115,6 +119,24 @@ async function route(request, env, url) {
         if (first === 'logout') return logout(request, env);
     }
     throw new HttpError(404, 'not found');
+}
+
+/**
+ * Serves a sound bank too big for the site from the R2 bucket, the only way into it. R2 bills reads
+ * past 10 million a month, so past BANK_READS_PER_MONTH the worker stops serving banks until the
+ * month turns; on the free plan its 100,000 requests a day keep reads under that anyway.
+ */
+async function bank(env, name) {
+    if (!BANK_FILES.has(name)) throw new HttpError(404, 'no such bank');
+    const month = new Date().toISOString().slice(0, 7);
+    const row = await env.DB.prepare('INSERT INTO bank_reads (month, n) VALUES (?, 1) ON CONFLICT (month) DO UPDATE SET n = n + 1 RETURNING n')
+        .bind(month).first();
+    if (row.n > BANK_READS_PER_MONTH) throw new HttpError(503, 'banks resting until next month');
+    const obj = await env.BANKS.get(name);
+    if (!obj) throw new HttpError(404, 'no such bank');
+    return new Response(obj.body, {
+        headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(obj.size), 'Cache-Control': 'public, max-age=31536000, immutable', ETag: obj.httpEtag },
+    });
 }
 
 async function body(request) {
