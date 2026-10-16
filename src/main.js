@@ -455,8 +455,10 @@ function setRoomPassword(pass) {
 }
 
 async function start() {
-    const buffer = await fetchBank($('piano').value);
-    const id = $('piano').value;
+    // The piano being fetched, not the one chosen by the time it arrives, which changePiano then loads
+    let id = $('piano').value;
+    const buffer = await fetchBank(id);
+    if (id === 'own' && !ownBuffer) id = 'salamander-16'; // its saved file was gone
     piano = await createPiano(ctx, buffer, BANKS[id], preloadProgress);
     loadedPiano = id;
     sharePiano();
