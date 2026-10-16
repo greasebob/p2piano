@@ -9,7 +9,7 @@ const SOUNDFONTS = `${import.meta.env.BASE_URL}soundfonts`;
 const REMOTE_SOUNDFONTS = 'https://p2piano-accounts.p2piano-accounts.workers.dev/banks';
 export const BANKS = {
     'salamander-16': { url: `${SOUNDFONTS}/salamander-grand-16-v1.sf3`, strikes: [13, 30, 35, 40, 45, 48, 53, 60, 68, 76, 84, 92, 100, 108, 116, 124] },
-    'bitklavier': { url: `${REMOTE_SOUNDFONTS}/bitklavier-grand-v1.sf3`, strikes: Array.from({ length: 16 }, (_, i) => i * 8 + 4) },
+    'bitklavier': { url: `${REMOTE_SOUNDFONTS}/bitklavier-grand-v2.sf3`, strikes: Array.from({ length: 16 }, (_, i) => i * 8 + 4) },
     'amethyst-studio': { url: `${SOUNDFONTS}/amethyst-studio-v1.sf3`, strikes: [100], level: -2 },
     'amethyst-hall': { url: `${SOUNDFONTS}/amethyst-hall-v1.sf3`, strikes: [100], level: -4.5 },
     // A soundfont the player opened from their own computer. It stays in this browser and is never sent.

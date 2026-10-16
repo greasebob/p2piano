@@ -25,6 +25,11 @@ TAIL_CAP_S = 20.0
 TAIL_FADE_S = 4.0
 LEVEL_WINDOW_S = 0.3
 LOW_KEY, HIGH_KEY = 21, 108
+# Release, as Salamander has it: 1 s where the dampers stop the string, 5 s above E6, where there are
+# none. Without it the SF2 default of 1 ms cuts each note dead when its key lifts.
+GEN_RELEASE = 38
+RELEASE_TC, UNDAMPED_RELEASE_TC = 0, 2786
+LAST_DAMPED_KEY = 88
 NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
 
@@ -83,9 +88,11 @@ def main():
                 s.data = to_int16(y[:, index], rng)
                 samples.append(s)
             lo_vel, hi_vel = (layer - 1) * 8 + 1, 127 if layer == LAYERS else layer * 8
+            release = RELEASE_TC if hi_key <= LAST_DAMPED_KEY else UNDAMPED_RELEASE_TC
             for sample in (left, right):
                 zones.append(sf2lib.Zone([gen_range(sf2lib.GEN_KEYRANGE, lo_key, hi_key),
                                           gen_range(sf2lib.GEN_VELRANGE, lo_vel, hi_vel),
+                                          (GEN_RELEASE, struct.pack('<h', release)),
                                           (sf2lib.GEN_SAMPLEID, struct.pack('<H', sample))], []))
         print(note_name(key), f'{len(samples[-1].data) / RATE:.1f}s', flush=True)
 

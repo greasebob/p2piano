@@ -22,7 +22,7 @@ const PENDING_MS = 10 * 60e3;
 const CODE_MS = 60e3;
 const ATTEST_SKEW_MS = 5 * 60e3;
 const MAX_UNTAGS = 200;
-const BANK_FILES = new Set(['bitklavier-grand-v1.sf3']);
+const BANK_FILES = new Set(['bitklavier-grand-v2.sf3']);
 const BANK_READS_PER_MONTH = 9e6;
 const enc = new TextEncoder();
 

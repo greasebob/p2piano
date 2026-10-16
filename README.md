@@ -45,8 +45,8 @@ The bitKlavier Grand is built from its [HouseORTF 44.1 kHz set](https://archive.
 
 ```
 python tools/build_bitklavier.py bitKlavierGrand_HouseORTF_44k16b bitklavier-grand.sf2
-node tools/to_sf3.mjs bitklavier-grand.sf2 bitklavier-grand-v1.sf3
-cd worker && npx wrangler r2 object put p2piano-banks/bitklavier-grand-v1.sf3 --file ../bitklavier-grand-v1.sf3 --remote
+node tools/to_sf3.mjs bitklavier-grand.sf2 bitklavier-grand-v2.sf3
+cd worker && npx wrangler r2 object put p2piano-banks/bitklavier-grand-v2.sf3 --file ../bitklavier-grand-v2.sf3 --remote
 ```
 
 The protocol is in [PROTOCOL.md](PROTOCOL.md).
